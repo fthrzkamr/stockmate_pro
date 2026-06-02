@@ -1,0 +1,2 @@
+<?php // Module: Scanner — Segera dibangun
+?><div class='card fade-up'><div class='flex items-center gap-4 py-8 justify-center'><div class='w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center'><i class='fa-solid fa-gear text-indigo-400 text-2xl'></i></div><div><p class='text-white font-bold'>Scanner</p><p class='text-slate-500 text-sm'>Modul ini sedang dalam pengembangan.</p></div></div></div>

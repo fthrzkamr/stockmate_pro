@@ -1,0 +1,112 @@
+/* ============================================
+   StockMate Pro — Main CSS
+   Dark theme + Tailwind custom utilities
+   ============================================ */
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
+
+/* Sidebar active indicator */
+[x-cloak] { display: none !important; }
+
+/* Table dark style */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl thead th {
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #334155;
+}
+.tbl tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #1e293b;
+    color: #cbd5e1;
+    font-size: 13px;
+}
+.tbl tbody tr:hover { background: rgba(14,165,233,0.05); }
+
+/* Card utility */
+.card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 20px;
+}
+.card-sm { padding: 14px 16px; }
+
+/* Badge */
+.badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:600; }
+.badge-pending  { background:rgba(234,179,8,.15);  color:#fbbf24; border:1px solid rgba(234,179,8,.25); }
+.badge-approved { background:rgba(34,197,94,.15);  color:#4ade80; border:1px solid rgba(34,197,94,.25); }
+.badge-rejected { background:rgba(239,68,68,.15);  color:#f87171; border:1px solid rgba(239,68,68,.25); }
+.badge-info     { background:rgba(14,165,233,.15); color:#38bdf8; border:1px solid rgba(14,165,233,.25); }
+
+/* Button utilities */
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; transition:all .2s; cursor:pointer; }
+.btn-primary { background:linear-gradient(135deg,#0284c7,#0ea5e9); color:white; }
+.btn-primary:hover { opacity:.9; transform:translateY(-1px); box-shadow:0 4px 16px rgba(14,165,233,.4); }
+.btn-danger  { background:rgba(239,68,68,.15); color:#f87171; border:1px solid rgba(239,68,68,.2); }
+.btn-danger:hover { background:rgba(239,68,68,.25); }
+.btn-success { background:rgba(34,197,94,.15); color:#4ade80; border:1px solid rgba(34,197,94,.2); }
+.btn-success:hover { background:rgba(34,197,94,.25); }
+.btn-sm { padding:5px 12px; font-size:12px; border-radius:8px; }
+
+/* Input dark */
+.form-input {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: #e2e8f0;
+    font-size: 13px;
+    transition: all .2s;
+    outline: none;
+}
+.form-input:focus { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,.15); }
+.form-input::placeholder { color: #475569; }
+.form-label { display:block; color:#64748b; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+
+/* Page header */
+.page-header { margin-bottom: 20px; }
+.page-title  { font-size: 20px; font-weight: 800; color: #f1f5f9; }
+.page-sub    { color: #64748b; font-size: 12px; margin-top: 2px; }
+
+/* Stats card */
+.stat-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+}
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    opacity: .07;
+    transform: translate(20px,-20px);
+}
+.stat-card.indigo::before  { background: #0ea5e9; }
+.stat-card.purple::before  { background: #8b5cf6; }
+.stat-card.pink::before    { background: #ec4899; }
+.stat-card.emerald::before { background: #10b981; }
+.stat-card.amber::before   { background: #f59e0b; }
+
+/* Notification dot */
+.notif-dot { width:8px; height:8px; background:#ef4444; border-radius:50%; display:inline-block; }
+
+/* Animate */
+@keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+.fade-up { animation: fadeUp .4s ease-out; }

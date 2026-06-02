@@ -1,0 +1,44 @@
+# PHP
+composer.phar
+composer.lock
+vendor/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log files
+logs/
+*.log
+error_log
+
+# Session files (jika tidak perlu di-commit)
+sessions/
+*.sess
+
+# Backup files
+*.bak
+*.backup
+
+# Database
+*.sql
+*.sqlite
+*.db
+
+# Cache
+cache/
+tmp/
+temp/
+*.cache
