@@ -7,10 +7,12 @@
 global $conn, $kunci, $id_role, $sistem, $menu;
 
 if (isAdmin()) {
-    // Admin bypass: load semua kategori
+    // Admin bypass: load semua kategori yang memiliki sub-menu aktif
     $qKate = $conn->prepare("
         SELECT DISTINCT km.id_kmu, km.nama_kmu, km.urutan_kmu
-        FROM kategori_menu km
+        FROM sub_menu sm
+        INNER JOIN menu m           ON sm.id_menu = m.id_menu
+        INNER JOIN kategori_menu km ON m.id_kmu = km.id_kmu
         ORDER BY km.urutan_kmu ASC
     ");
     $qKate->execute();
@@ -46,7 +48,8 @@ $kategoriList = $qKate->fetchAll();
     <!-- Dashboard selalu tampil -->
     <div class="mb-4">
         <a href="<?= $sistem ?>/home"
-           class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200
+           onclick="loadcontent('home', event)"
+           class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200
                   <?= ($menu === 'home' || $menu === '')
                       ? 'bg-sky-50 text-sky-700 font-bold border border-sky-100/50 shadow-sm'
                       : 'text-slate-600 font-medium hover:bg-slate-50 hover:text-slate-900' ?>">
@@ -69,7 +72,8 @@ $kategoriList = $qKate->fetchAll();
         if (isAdmin()) {
             $qMenu = $conn->prepare("
                 SELECT DISTINCT m.id_menu, m.nama_menu, ic.nama_icon
-                FROM menu m
+                FROM sub_menu sm
+                INNER JOIN menu m ON sm.id_menu = m.id_menu
                 LEFT JOIN icon ic ON m.id_icon = ic.id_icon
                 WHERE m.id_kmu = :kmu
                 ORDER BY m.urutan_menu ASC
@@ -128,7 +132,8 @@ $kategoriList = $qKate->fetchAll();
                 <!-- Single sub -->
                 <?php $s = $subList[0]; ?>
                 <a href="<?= $sistem ?>/<?= htmlspecialchars($s['url_smu']) ?>"
-                   class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200
+                   onclick="loadcontent('<?= htmlspecialchars($s['url_smu']) ?>', event)"
+                   class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200
                           <?= $isMenuActive
                               ? 'bg-sky-50 text-sky-700 font-bold border border-sky-100/50 shadow-sm'
                               : 'text-slate-600 font-medium hover:bg-slate-50 hover:text-slate-900' ?>"
@@ -169,7 +174,8 @@ $kategoriList = $qKate->fetchAll();
                             $isSubActive = ($menu === $sub['url_smu']);
                         ?>
                         <a href="<?= $sistem ?>/<?= htmlspecialchars($sub['url_smu']) ?>"
-                           class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all duration-200
+                           onclick="loadcontent('<?= htmlspecialchars($sub['url_smu']) ?>', event)"
+                           class="sidebar-link flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all duration-200
                                   <?= $isSubActive
                                       ? 'text-sky-700 font-bold bg-sky-50 shadow-sm border border-sky-100/50'
                                       : 'text-slate-500 font-medium hover:text-slate-800 hover:bg-slate-50' ?>">

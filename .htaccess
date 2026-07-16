@@ -16,16 +16,22 @@
     # ==============================
     # MASTER BARANG
     # ==============================
-    RewriteRule ^barang$                    sistem.php?menu=barang [L]
+    RewriteRule ^barang$                    sistem.php?menu=barang [QSA,L]
     RewriteRule ^barang/cari=(.*)$          sistem.php?menu=barang&cari=$1 [L]
     RewriteRule ^barang/i$                  sistem.php?menu=ibarang [L]
     RewriteRule ^barang/e/(.*)$             sistem.php?menu=ebarang&keycode=$1 [L]
     RewriteRule ^barang/v/(.*)$             sistem.php?menu=vbarang&keycode=$1 [L]
 
     # ==============================
+    # CETAK BARCODE
+    # ==============================
+    RewriteRule ^cetakbarcode$              sistem.php?menu=cetakbarcode [QSA,L]
+    RewriteRule ^pcetakbarcode$             sistem.php?menu=pcetakbarcode [QSA,L]
+
+    # ==============================
     # SUPPLIER
     # ==============================
-    RewriteRule ^supplier$                  sistem.php?menu=supplier [L]
+    RewriteRule ^supplier$                  sistem.php?menu=supplier [QSA,L]
     RewriteRule ^supplier/cari=(.*)$        sistem.php?menu=supplier&cari=$1 [L]
     RewriteRule ^supplier/i$                sistem.php?menu=isupplier [L]
     RewriteRule ^supplier/e/(.*)$           sistem.php?menu=esupplier&keycode=$1 [L]
@@ -34,7 +40,7 @@
     # ==============================
     # OUTLET
     # ==============================
-    RewriteRule ^outlet$                    sistem.php?menu=outlet [L]
+    RewriteRule ^outlet$                    sistem.php?menu=outlet [QSA,L]
     RewriteRule ^outlet/cari=(.*)$          sistem.php?menu=outlet&cari=$1 [L]
     RewriteRule ^outlet/i$                  sistem.php?menu=ioutlet [L]
     RewriteRule ^outlet/e/(.*)$             sistem.php?menu=eoutlet&keycode=$1 [L]
@@ -43,23 +49,23 @@
     # ==============================
     # BARANG MASUK (Admin Gudang)
     # ==============================
-    RewriteRule ^barangmasuk$               sistem.php?menu=barangmasuk [L]
+    RewriteRule ^barangmasuk$               sistem.php?menu=barangmasuk [QSA,L]
     RewriteRule ^barangmasuk/cari=(.*)$     sistem.php?menu=barangmasuk&cari=$1 [L]
     RewriteRule ^barangmasuk/i$             sistem.php?menu=ibarangmasuk [L]
-    RewriteRule ^barangmasuk/v/(.*)$        sistem.php?menu=vbarangmasuk&keycode=$1 [L]
+    RewriteRule ^barangmasuk/v/(.*)$        sistem.php?menu=vbarangmasuk&keycode=$1 [QSA,L]
 
     # ==============================
     # BARANG KELUAR (Admin Gudang)
     # ==============================
-    RewriteRule ^barangkeluar$              sistem.php?menu=barangkeluar [L]
+    RewriteRule ^barangkeluar$              sistem.php?menu=barangkeluar [QSA,L]
     RewriteRule ^barangkeluar/cari=(.*)$    sistem.php?menu=barangkeluar&cari=$1 [L]
     RewriteRule ^barangkeluar/i$            sistem.php?menu=ibarangkeluar [L]
-    RewriteRule ^barangkeluar/v/(.*)$       sistem.php?menu=vbarangkeluar&keycode=$1 [L]
+    RewriteRule ^barangkeluar/v/(.*)$       sistem.php?menu=vbarangkeluar&keycode=$1 [QSA,L]
 
     # ==============================
     # TERIMA BARANG (Stock Keeper)
     # ==============================
-    RewriteRule ^terimabarang$              sistem.php?menu=terimabarang [L]
+    RewriteRule ^terimabarang$              sistem.php?menu=terimabarang [QSA,L]
     RewriteRule ^terimabarang/cari=(.*)$    sistem.php?menu=terimabarang&cari=$1 [L]
     RewriteRule ^terimabarang/i$            sistem.php?menu=iterimabarang [L]
     RewriteRule ^terimabarang/v/(.*)$       sistem.php?menu=vterimabarang&keycode=$1 [L]
@@ -67,16 +73,17 @@
     # ==============================
     # PEMAKAIAN BARANG (Stock Keeper)
     # ==============================
-    RewriteRule ^pemakaian$                 sistem.php?menu=pemakaian [L]
-    RewriteRule ^pemakaian/cari=(.*)$       sistem.php?menu=pemakaian&cari=$1 [L]
-    RewriteRule ^pemakaian/i$               sistem.php?menu=ipemakaian [L]
-    RewriteRule ^pemakaian/v/(.*)$          sistem.php?menu=vpemakaian&keycode=$1 [L]
+    RewriteRule ^pemakaian$                 sistem.php?menu=pemakaian [QSA,L]
+    RewriteRule ^pemakaian/cari=(.*)$       sistem.php?menu=pemakaian&cari=$1 [QSA,L]
+    RewriteRule ^pemakaian/i$               sistem.php?menu=ipemakaian [QSA,L]
+    RewriteRule ^pemakaian/v/(.*)$          sistem.php?menu=vpemakaian&keycode=$1 [QSA,L]
 
     # ==============================
     # STOK OUTLET (Stock Keeper)
     # ==============================
-    RewriteRule ^stokoutlet$                sistem.php?menu=stokoutlet [L]
-    RewriteRule ^stokoutlet/cari=(.*)$      sistem.php?menu=stokoutlet&cari=$1 [L]
+    RewriteRule ^stokoutlet$                sistem.php?menu=stokoutlet [QSA,L]
+    RewriteRule ^stokoutlet/cari=(.*)$      sistem.php?menu=stokoutlet&cari=$1 [QSA,L]
+    RewriteRule ^stokoutlet/v/(.*)$         sistem.php?menu=vstokoutlet&keycode=$1 [QSA,L]
 
     # ==============================
     # STOCK OPNAME (Staff)
@@ -86,6 +93,15 @@
     RewriteRule ^stockopname/i$             sistem.php?menu=istockopname [QSA,L]
     RewriteRule ^stockopname/e/(.*)$        sistem.php?menu=estockopname&keycode=$1 [QSA,L]
     RewriteRule ^stockopname/v/(.*)$        sistem.php?menu=vstockopname&keycode=$1 [QSA,L]
+
+    # ==============================
+    # STOCK OPNAME BULANAN (Staff)
+    # ==============================
+    RewriteRule ^stockopname_monthly$               sistem.php?menu=stockopname_monthly [QSA,L]
+    RewriteRule ^stockopname_monthly/cari=(.*)$     sistem.php?menu=stockopname_monthly&cari=$1 [QSA,L]
+    RewriteRule ^stockopname_monthly/i$             sistem.php?menu=istockopname_monthly [QSA,L]
+    RewriteRule ^stockopname_monthly/e/(.*)$        sistem.php?menu=estockopname_monthly&keycode=$1 [QSA,L]
+    RewriteRule ^stockopname_monthly/v/(.*)$        sistem.php?menu=vstockopname_monthly&keycode=$1 [QSA,L]
 
     # ==============================
     # APPROVAL STOCK OPNAME (SPV)
@@ -98,10 +114,14 @@
     # LAPORAN
     # ==============================
     RewriteRule ^laporan$                   sistem.php?menu=laporan [L]
-    RewriteRule ^laporan/stok$              sistem.php?menu=laporanstok [L]
-    RewriteRule ^laporan/masuk$             sistem.php?menu=laporanmasuk [L]
-    RewriteRule ^laporan/keluar$            sistem.php?menu=laporankeluar [L]
-    RewriteRule ^laporan/selisih$           sistem.php?menu=laporanselisih [L]
+    RewriteRule ^laporan/stok$              sistem.php?menu=laporanstok [QSA,L]
+    RewriteRule ^laporanstok$               sistem.php?menu=laporanstok [QSA,L]
+    RewriteRule ^laporan/masuk$             sistem.php?menu=laporanmasuk [QSA,L]
+    RewriteRule ^laporanmasuk$              sistem.php?menu=laporanmasuk [QSA,L]
+    RewriteRule ^laporan/keluar$            sistem.php?menu=laporankeluar [QSA,L]
+    RewriteRule ^laporankeluar$             sistem.php?menu=laporankeluar [QSA,L]
+    RewriteRule ^laporan/selisih$           sistem.php?menu=laporanselisih [QSA,L]
+    RewriteRule ^laporanselisih$            sistem.php?menu=laporanselisih [QSA,L]
 
     # ==============================
     # MASTER BAGIAN
@@ -113,14 +133,14 @@
     # ==============================
     # INVENTORY
     # ==============================
-    RewriteRule ^inventory$                 sistem.php?menu=inventory [L]
+    RewriteRule ^inventory$                 sistem.php?menu=inventory [QSA,L]
     RewriteRule ^inventory/cari=(.*)$       sistem.php?menu=inventory&cari=$1 [L]
     RewriteRule ^inventory/edit$            sistem.php?menu=einventory [QSA,L]
 
     # ==============================
     # ADMINISTRATOR / USERS
     # ==============================
-    RewriteRule ^administrator$             sistem.php?menu=administrator [L]
+    RewriteRule ^administrator$             sistem.php?menu=administrator [QSA,L]
     RewriteRule ^administrator/cari=(.*)$   sistem.php?menu=administrator&cari=$1 [L]
     RewriteRule ^administrator/i$           sistem.php?menu=iadministrator [L]
     RewriteRule ^administrator/edit$        sistem.php?menu=eadministrator [QSA,L]
@@ -143,7 +163,7 @@
 
     php_value max_input_vars 100000
 
-    ErrorDocument 404 /project_work/signin.php
+    ErrorDocument 404 /stockmate_pro/signin.php
     Options All -Indexes
 </IfModule>
 

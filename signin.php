@@ -1,12 +1,12 @@
 <?php
 session_start();
+$sistem  = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/stockmate_pro';
 if (isset($_SESSION['user_id'])) {
-    header('Location: http://'.$_SERVER['HTTP_HOST'].'/project_work/home');
+    header("Location: $sistem/home");
     exit;
 }
 $error   = $_GET['error']   ?? '';
 $success = $_GET['success'] ?? '';
-$sistem  = 'http://'.$_SERVER['HTTP_HOST'].'/project_work';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_once('config/connection/connection.php');

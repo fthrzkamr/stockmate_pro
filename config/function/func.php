@@ -18,47 +18,7 @@ function requireAdmin(): void {
     }
 }
 
-/**
- * Auto-migration & Auto-sync hak akses untuk Role Administrator (is_admin=1).
- * Ini memastikan kolom CRUD ada di DB dan Admin otomatis punya akses ke menu baru.
- */
-function syncAdminPermissions(): void {
-    global $conn;
-    // Jalankan migrasi tabel roles, users, dan role_menu
-    require_once(__DIR__ . '/migration_rbac.php');
-    // Bersihkan menu duplikat
-    require_once(__DIR__ . '/clean_menu.php');
-    
-    try {
-        // Cari id_role mana saja yang memiliki hak is_admin = 1
-        $admin_roles = $conn->query("SELECT id_role FROM roles WHERE is_admin = 1")->fetchAll(PDO::FETCH_COLUMN);
-        if (empty($admin_roles)) return;
 
-        $total_menu = $conn->query("SELECT COUNT(*) FROM sub_menu")->fetchColumn();
-        
-        foreach ($admin_roles as $id_role) {
-            $has_menu = $conn->prepare("SELECT COUNT(*) FROM role_menu WHERE id_role = ?");
-            $has_menu->execute([$id_role]);
-            
-            if ((int)$total_menu !== (int)$has_menu->fetchColumn()) {
-                $all_smus = $conn->query("SELECT id_smu FROM sub_menu")->fetchAll(PDO::FETCH_COLUMN);
-                $conn->beginTransaction();
-                $stmt = $conn->prepare("
-                    INSERT INTO role_menu (id_role, id_smu, can_view, can_create, can_edit, can_delete, can_print)
-                    VALUES (?, ?, 1, 1, 1, 1, 1)
-                    ON DUPLICATE KEY UPDATE 
-                        can_view=1, can_create=1, can_edit=1, can_delete=1, can_print=1
-                ");
-                foreach ($all_smus as $id_smu) {
-                    $stmt->execute([$id_role, $id_smu]);
-                }
-                $conn->commit();
-            }
-        }
-    } catch (Exception $e) {
-        if ($conn->inTransaction()) $conn->rollBack();
-    }
-}
 
 /**
  * Cek apakah user punya akses ke URL tertentu (via id_role dari session)
@@ -134,8 +94,8 @@ function canDo(string $url_smu, string $action = 'view'): bool {
     } catch(Exception $e) { return false; }
 }
 
-function sanitize(string $val): string {
-    return htmlspecialchars(trim($val), ENT_QUOTES, 'UTF-8');
+function sanitize($val): string {
+    return htmlspecialchars(trim((string)($val ?? '')), ENT_QUOTES, 'UTF-8');
 }
 
 function formatTanggal(string $date): string {
@@ -152,6 +112,81 @@ function jsonResponse(string $status, string $msg, array $data = []): void {
     header('Content-Type: application/json');
     echo json_encode(array_merge(['status' => $status, 'msg' => $msg], $data));
     exit;
+}
+
+/**
+ * Pagination Helper - Generate pagination HTML (AJAX capable)
+ * @param int $totalData Total data
+ * @param int $limit Jumlah data per halaman
+ * @param string $urlBase URL dasar tanpa parameter page
+ * @param int $currentPage Halaman saat ini
+ * @param string $modul Name of the module for AJAX calls
+ * @param string $search Search query
+ */
+/**
+ * Generate "Show N entries" dropdown — diletakkan di ATAS tabel (di toolbar)
+ */
+function generateShowEntries(int $limit, string $modul = '', string $search = ''): string {
+    return '<div class="flex items-center gap-2">
+        <span class="text-xs text-slate-500 font-medium">Tampilkan:</span>
+        <select onchange="changeLimit(this.value, \'' . $modul . '\', \'' . $search . '\')" 
+                class="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-500/30 bg-white text-slate-600 font-medium">
+            <option value="10" ' . ($limit == 10 ? 'selected' : '') . '>10</option>
+            <option value="25" ' . ($limit == 25 ? 'selected' : '') . '>25</option>
+            <option value="50" ' . ($limit == 50 ? 'selected' : '') . '>50</option>
+            <option value="100" ' . ($limit == 100 ? 'selected' : '') . '>100</option>
+        </select>
+        <span class="text-xs text-slate-400">data</span>
+    </div>';
+}
+
+function generatePagination(int $totalData, int $limit, string $urlBase, int $currentPage, string $modul = '', string $search = ''): string {
+    if (empty($modul)) {
+        $parts = explode('/', rtrim($urlBase, '/'));
+        $modul = end($parts);
+    }
+    
+    $totalPages = max(1, (int)ceil($totalData / $limit));
+    $currentPage = max(1, min($currentPage, $totalPages));
+    
+    $html = '<div class="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-white">
+        <div class="flex items-center gap-2 text-[11px] text-slate-500">
+            <span>Halaman <span class="font-bold text-slate-700">' . $currentPage . '</span> dari <span class="font-bold text-slate-700">' . $totalPages . '</span></span>
+            <span class="text-slate-300">|</span>
+            <span>Total: <span class="font-bold text-sky-600">' . number_format($totalData, 0, ',', '.') . '</span> data</span>
+        </div>
+        <div class="flex items-center gap-1">
+            <button onclick="goToPage(1, ' . $limit . ', \'' . $modul . '\', \'' . $search . '\')" 
+                    class="px-2 py-1 hover:bg-slate-100 rounded-lg text-xs ' . ($currentPage == 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600') . '" title="Halaman Pertama">
+                <i class="fa-solid fa-angles-left"></i>
+            </button>
+            <button onclick="goToPage(' . max(1, $currentPage-1) . ', ' . $limit . ', \'' . $modul . '\', \'' . $search . '\')" 
+                    class="px-2 py-1 hover:bg-slate-100 rounded-lg text-xs ' . ($currentPage == 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600') . '" title="Sebelumnya">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>';
+    
+    // Generate page numbers
+    $rangeStart = max(1, $currentPage - 2);
+    $rangeEnd = min($totalPages, $currentPage + 2);
+    
+    for ($i = $rangeStart; $i <= $rangeEnd; $i++) {
+        $activeClass = ($i == $currentPage) ? 'bg-sky-600 text-white font-bold shadow-sm' : 'hover:bg-slate-100 text-slate-600';
+        $html .= '<button onclick="goToPage(' . $i . ', ' . $limit . ', \'' . $modul . '\', \'' . $search . '\')" class="w-7 h-7 flex items-center justify-center rounded-lg text-xs ' . $activeClass . '">' . $i . '</button>';
+    }
+    
+    $html .= '
+            <button onclick="goToPage(' . min($totalPages, $currentPage+1) . ', ' . $limit . ', \'' . $modul . '\', \'' . $search . '\')" 
+                    class="px-2 py-1 hover:bg-slate-100 rounded-lg text-xs ' . ($currentPage == $totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600') . '" title="Selanjutnya">
+                <i class="fa-solid fa-angle-right"></i>
+            </button>
+            <button onclick="goToPage(' . $totalPages . ', ' . $limit . ', \'' . $modul . '\', \'' . $search . '\')" 
+                    class="px-2 py-1 hover:bg-slate-100 rounded-lg text-xs ' . ($currentPage == $totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600') . '" title="Halaman Terakhir">
+                <i class="fa-solid fa-angles-right"></i>
+            </button>
+        </div>
+    </div>';
+    
+    return $html;
 }
 
 /**

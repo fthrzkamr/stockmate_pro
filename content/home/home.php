@@ -4,47 +4,36 @@ global $conn, $nama, $sistem;
 // Stats
 try { $totalBarang = (int)$conn->query("SELECT COUNT(*) FROM barang")->fetchColumn(); } catch(Exception $e) { $totalBarang = 0; }
 try { $totalOutlet = (int)$conn->query("SELECT COUNT(*) FROM outlet WHERE is_active = 1")->fetchColumn(); } catch(Exception $e) { $totalOutlet = 0; }
-try { 
+try { $pendingTerima = (int)$conn->query("SELECT COUNT(*) FROM barang_keluar WHERE status='Pending'")->fetchColumn(); } catch(Exception $e) { $pendingTerima = 0; }
+try {
     $hampirHabis = (int)$conn->query("
         SELECT COUNT(*) FROM (
             SELECT b.id_barang, b.min_stok,
-                   (COALESCE((SELECT SUM(qty) FROM barang_masuk WHERE id_barang = b.id_barang), 0) - 
+                   (COALESCE((SELECT SUM(qty) FROM barang_masuk WHERE id_barang = b.id_barang), 0) -
                     COALESCE((SELECT SUM(qty) FROM barang_keluar WHERE id_barang = b.id_barang), 0)) as current_stok
             FROM barang b
         ) t WHERE current_stok <= min_stok AND min_stok > 0
-    ")->fetchColumn(); 
+    ")->fetchColumn();
 } catch(Exception $e) { $hampirHabis = 0; }
 
-// Data Keluar — dikelompokkan per TAHUN per BULAN
-$currentYear = (int)date('Y');
-$years = [$currentYear - 2, $currentYear - 1, $currentYear];
-$bulanLabels = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-
-// Init data per tahun
-$chartSeries = [];
-foreach ($years as $y) {
-    $chartSeries[$y] = array_fill(0, 12, 0); // index 0-11
-}
+// Transaksi Terakhir
+try {
+    $recentMasuk = $conn->query("
+        SELECT bm.tanggal, b.nama_barang, bm.qty, b.satuan
+        FROM barang_masuk bm JOIN barang b ON bm.id_barang = b.id_barang
+        ORDER BY bm.id_masuk DESC LIMIT 5
+    ")->fetchAll();
+} catch(Exception $e) { $recentMasuk = []; }
 
 try {
-    $rows = $conn->query("
-        SELECT YEAR(tanggal) as thn, MONTH(tanggal) as bln, SUM(qty) as total
-        FROM barang_keluar
-        WHERE YEAR(tanggal) >= " . ($currentYear - 2) . "
-        GROUP BY thn, bln
-        ORDER BY thn, bln
+    $recentKeluar = $conn->query("
+        SELECT bk.tanggal, b.nama_barang, bk.qty, b.satuan, o.nama_outlet, bk.status
+        FROM barang_keluar bk
+        JOIN barang b ON bk.id_barang = b.id_barang
+        LEFT JOIN outlet o ON bk.id_outlet = o.id_outlet
+        ORDER BY bk.id_keluar DESC LIMIT 5
     ")->fetchAll();
-
-    foreach ($rows as $r) {
-        $y = (int)$r['thn'];
-        $m = (int)$r['bln'] - 1; // 0-index
-        if (isset($chartSeries[$y])) {
-            $chartSeries[$y][$m] = (int)$r['total'];
-        }
-    }
-} catch(Exception $e) {}
-
-$isAdmin = isAdmin();
+} catch(Exception $e) { $recentKeluar = []; }
 ?>
 
 <div class="fade-up space-y-6">
@@ -59,7 +48,7 @@ $isAdmin = isAdmin();
         </p>
     </div>
 
-    <!-- Alert -->
+    <!-- Alert Stok Menipis -->
     <?php if ($hampirHabis > 0): ?>
     <div class="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm">
         <i class="fa-solid fa-triangle-exclamation text-amber-500 flex-shrink-0"></i>
@@ -70,140 +59,82 @@ $isAdmin = isAdmin();
     </div>
     <?php endif; ?>
 
+    <!-- Pending Terima Barang -->
+    <?php if ($pendingTerima > 0): ?>
+    <div class="flex items-center gap-3 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl px-4 py-3 text-sm">
+        <i class="fa-solid fa-truck-fast text-indigo-500 flex-shrink-0"></i>
+        <span><strong><?= $pendingTerima ?> pengiriman</strong> menunggu konfirmasi penerimaan di outlet.</span>
+        <a href="<?= $sistem ?>/terimabarang?tab=pending" class="ml-auto text-indigo-600 font-bold text-xs bg-indigo-100 hover:bg-indigo-200 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
+            Lihat &rarr;
+        </a>
+    </div>
+    <?php endif; ?>
+
     <!-- Stat Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <!-- Total Barang -->
-        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-4">
-            <div>
-                <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Total Barang</p>
-                <p class="text-3xl font-black text-slate-800"><?= number_format($totalBarang) ?></p>
-                <p class="text-slate-500 text-xs mt-1">Item terdaftar</p>
+        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-3 border border-sky-100">
+                <i class="fa-solid fa-boxes-stacked text-sm"></i>
             </div>
-            <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-sky-500 text-white shadow-md shadow-sky-100">
-                <i class="fa-solid fa-boxes-stacked text-xl"></i>
-            </div>
+            <p class="text-2xl font-black text-slate-800"><?= number_format($totalBarang) ?></p>
+            <p class="text-slate-500 text-xs mt-1 font-medium">Total Barang</p>
         </div>
-        <!-- Total Outlet -->
-        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-4">
-            <div>
-                <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Total Outlet</p>
-                <p class="text-3xl font-black text-slate-800"><?= number_format($totalOutlet) ?></p>
-                <p class="text-slate-500 text-xs mt-1">Lokasi aktif</p>
+        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 border border-emerald-100">
+                <i class="fa-solid fa-store text-sm"></i>
             </div>
-            <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-emerald-500 text-white shadow-md shadow-emerald-100">
-                <i class="fa-solid fa-store text-xl"></i>
-            </div>
+            <p class="text-2xl font-black text-slate-800"><?= number_format($totalOutlet) ?></p>
+            <p class="text-slate-500 text-xs mt-1 font-medium">Outlet Aktif</p>
         </div>
     </div>
 
-    <!-- Grafik -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-            <div>
-                <h3 class="text-slate-800 font-bold text-sm">Grafik Penjualan</h3>
-                <p class="text-slate-400 text-xs mt-0.5">Perbandingan 3 tahun terakhir per bulan</p>
+    <!-- Transaksi Terakhir -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        <!-- Barang Masuk Terakhir -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <h3 class="text-sm font-bold text-slate-800"><i class="fa-solid fa-arrow-down text-blue-500 mr-2"></i>Barang Masuk Terakhir</h3>
+                <a href="<?= $sistem ?>/barangmasuk" class="text-xs text-sky-600 font-semibold hover:underline">Lihat semua</a>
             </div>
-            <div class="flex items-center gap-3">
-                <?php $colors = ['#0ea5e9','#10b981','#f59e0b']; $ci = 0; ?>
-                <?php foreach ($years as $y): ?>
-                <div class="flex items-center gap-1.5">
-                    <span class="w-3 h-3 rounded-sm" style="background:<?= $colors[$ci] ?>"></span>
-                    <span class="text-slate-500 text-xs font-semibold"><?= $y ?></span>
+            <div class="divide-y divide-slate-50">
+                <?php if (empty($recentMasuk)): ?>
+                <p class="text-center text-slate-400 text-xs py-8">Belum ada data.</p>
+                <?php else: foreach ($recentMasuk as $r): ?>
+                <div class="flex items-center justify-between px-5 py-3">
+                    <div>
+                        <p class="text-sm font-semibold text-slate-800"><?= sanitize($r['nama_barang']) ?></p>
+                        <p class="text-[11px] text-slate-400 mt-0.5"><?= date('d M Y', strtotime($r['tanggal'])) ?></p>
+                    </div>
+                    <span class="text-sm font-bold text-blue-600">+<?= number_format($r['qty']) ?> <span class="text-xs text-slate-400 font-normal"><?= sanitize($r['satuan']) ?></span></span>
                 </div>
-                <?php $ci++; endforeach; ?>
+                <?php endforeach; endif; ?>
             </div>
         </div>
-        <div class="p-4">
-            <div id="chartPenjualan"></div>
+
+        <!-- Barang Keluar Terakhir -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <h3 class="text-sm font-bold text-slate-800"><i class="fa-solid fa-arrow-up text-rose-500 mr-2"></i>Barang Keluar Terakhir</h3>
+                <a href="<?= $sistem ?>/barangkeluar" class="text-xs text-sky-600 font-semibold hover:underline">Lihat semua</a>
+            </div>
+            <div class="divide-y divide-slate-50">
+                <?php if (empty($recentKeluar)): ?>
+                <p class="text-center text-slate-400 text-xs py-8">Belum ada data.</p>
+                <?php else: foreach ($recentKeluar as $r): ?>
+                <div class="flex items-center justify-between px-5 py-3">
+                    <div>
+                        <p class="text-sm font-semibold text-slate-800"><?= sanitize($r['nama_barang']) ?></p>
+                        <p class="text-[11px] text-slate-400 mt-0.5"><?= date('d M Y', strtotime($r['tanggal'])) ?> · <?= sanitize($r['nama_outlet'] ?: '—') ?></p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-sm font-bold text-rose-600">-<?= number_format($r['qty']) ?> <span class="text-xs text-slate-400 font-normal"><?= sanitize($r['satuan']) ?></span></span>
+                        <p class="text-[10px] mt-0.5 <?= $r['status'] === 'Diterima' ? 'text-emerald-500' : 'text-amber-500' ?> font-semibold"><?= $r['status'] ?></p>
+                    </div>
+                </div>
+                <?php endforeach; endif; ?>
+            </div>
         </div>
     </div>
 
 </div>
-
-<script>
-const bulanLabels = <?= json_encode($bulanLabels) ?>;
-const seriesData  = <?= json_encode(array_values(array_map('array_values', $chartSeries))) ?>;
-const seriesYears = <?= json_encode(array_values($years)) ?>;
-const seriesColors = ['#0ea5e9', '#10b981', '#f59e0b'];
-
-const series = seriesYears.map((y, i) => ({ name: String(y), data: seriesData[i] }));
-
-function buildOptions(w) {
-    return {
-        chart: {
-            type: 'bar',
-            height: 320,
-            width: w || '100%',
-            toolbar: { show: false },
-            zoom:    { enabled: false },
-            fontFamily: 'Poppins, system-ui, sans-serif',
-            animations: { enabled: true }
-        },
-        plotOptions: {
-            bar: { columnWidth: '55%', borderRadius: 3 }
-        },
-        dataLabels: { enabled: false },
-        colors: seriesColors,
-        series: series,
-        xaxis: {
-            categories: bulanLabels,
-            labels: {
-                style: { fontSize: '11px', fontWeight: 500, colors: '#94a3b8' },
-                rotate: 0,
-                hideOverlappingLabels: false,
-                trim: false
-            },
-            axisBorder: { show: false },
-            axisTicks:  { show: false }
-        },
-        yaxis: {
-            min: 0,
-            labels: {
-                style: { fontSize: '11px', colors: '#94a3b8' },
-                formatter: v => Math.floor(v)
-            }
-        },
-        legend: { show: false },
-        tooltip: {
-            theme: 'light',
-            y: { formatter: v => v + ' item' }
-        },
-        grid: {
-            borderColor: '#f1f5f9',
-            strokeDashArray: 4,
-            yaxis: { lines: { show: true } },
-            xaxis: { lines: { show: false } },
-            padding: { left: 4, right: 4 }
-        }
-    };
-}
-
-let chartInstance = null;
-
-function renderChart() {
-    const el = document.getElementById('chartPenjualan');
-    if (!el) return;
-    const parentW = el.parentElement ? el.parentElement.offsetWidth : 0;
-    if (chartInstance) { chartInstance.destroy(); }
-    chartInstance = new ApexCharts(el, buildOptions(parentW > 0 ? parentW : '100%'));
-    chartInstance.render();
-}
-
-// Render setelah semua CSS & sidebar transition selesai
-window.addEventListener('load', () => setTimeout(renderChart, 200));
-
-// Update saat sidebar dibuka/tutup atau resize window
-window.addEventListener('resize', () => {
-    clearTimeout(window._chartResizeTimer);
-    window._chartResizeTimer = setTimeout(renderChart, 150);
-});
-
-// Pantau perubahan lebar kontainer (Alpine sidebar toggle)
-const chartParent = document.getElementById('chartPenjualan');
-if (chartParent && window.ResizeObserver) {
-    new ResizeObserver(() => {
-        clearTimeout(window._chartObsTimer);
-        window._chartObsTimer = setTimeout(renderChart, 200);
-    }).observe(chartParent.closest('.space-y-6') || document.body);
-}
-</script>

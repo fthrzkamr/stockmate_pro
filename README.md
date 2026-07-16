@@ -94,11 +94,11 @@ StockMate Pro adalah aplikasi web berbasis PHP untuk mengelola inventory/gudang 
 
 4. **Setup Web Server**
    - Arahkan document root ke folder project
-   - Untuk XAMPP: letakkan di `C:\xampp\htdocs\project_work`
+   - Untuk XAMPP: letakkan di `C:\xampp\htdocs\stockmate_pro`
    - Pastikan `.htaccess` aktif (mod_rewrite enabled)
 
 5. **Akses Aplikasi**
-   - Buka browser: `http://localhost/project_work`
+   - Buka browser: `http://localhost/stockmate_pro`
    - Login default:
      - Username: `admin`
      - Password: `admin123`
@@ -106,7 +106,7 @@ StockMate Pro adalah aplikasi web berbasis PHP untuk mengelola inventory/gudang 
 ## 🗂️ Struktur Project
 
 ```
-project_work/
+stockmate_pro/
 ├── assets/              # CSS & JavaScript files
 │   ├── css/
 │   └── js/

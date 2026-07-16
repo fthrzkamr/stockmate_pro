@@ -1,56 +1,55 @@
 <?php
 // Handle POST action for cancellation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cancel_transaction') {
+    ob_clean();
     header('Content-Type: application/json');
     if (!canDo('barangmasuk', 'delete')) {
         echo json_encode(['status' => 'error', 'msg' => 'Anda tidak memiliki hak akses untuk membatalkan transaksi.']);
         exit;
     }
 
-    $id_masuk = (int)($_POST['id_masuk'] ?? $_GET['keycode'] ?? $_GET['id'] ?? 0);
-    if (!$id_masuk) {
+    $trx_code = $_POST['trx_code'] ?? '';
+    if (!$trx_code) {
         echo json_encode(['status' => 'error', 'msg' => 'ID Transaksi tidak valid.']);
         exit;
     }
 
     $conn->beginTransaction();
     try {
-        // 1. Ambil detail barang masuk terlebih dahulu
+        // Ambil semua item dari transaksi ini
         $st = $conn->prepare("
-            SELECT bm.*, b.nama_barang, 
-                   (COALESCE((SELECT SUM(qty) FROM barang_masuk WHERE id_barang = b.id_barang), 0) - 
-                    COALESCE((SELECT SUM(qty) FROM barang_keluar WHERE id_barang = b.id_barang), 0)) as stok_sekarang 
+            SELECT bm.*, b.nama_barang 
             FROM barang_masuk bm
             JOIN barang b ON bm.id_barang = b.id_barang
-            WHERE bm.id_masuk = ?
+            WHERE COALESCE(bm.kode_transaksi, bm.id_masuk) = ?
         ");
-        $st->execute([$id_masuk]);
-        $trx = $st->fetch();
+        $st->execute([$trx_code]);
+        $items = $st->fetchAll();
 
-        if (!$trx) {
+        if (!$items) {
             throw new Exception('Transaksi tidak ditemukan.');
         }
 
-        // 2. Cek apakah pengurangan stok akan membuat stok menjadi minus
-        // (Opsional: Biasanya boleh minus jika diizinkan, tapi lebih aman dicegah atau diberi warning)
-        if ($trx['stok_sekarang'] < $trx['qty']) {
-            throw new Exception("Tidak dapat membatalkan transaksi. Stok sekarang ({$trx['stok_sekarang']}) lebih kecil dari jumlah masuk ({$trx['qty']}).");
+        // Hapus data transaksi barang masuk
+        // Trigger di MySQL otomatis MENAMBAH stok inventory jika ada yg masuk.
+        // Kita harus kembalikan manual dgn MENGURANGI.
+        foreach ($items as $trx) {
+            $conn->exec("UPDATE inventory SET stok = stok - {$trx['qty']} WHERE id_barang = {$trx['id_barang']}");
+            // Log for each item
+            writeAuditLog(
+                'DELETE', 
+                'barang_masuk', 
+                $trx['id_masuk'], 
+                "Membatalkan penerimaan: {$trx['nama_barang']} (Qty: {$trx['qty']})"
+            );
         }
 
-        // 3. Hapus data transaksi barang masuk
-        $del = $conn->prepare("DELETE FROM barang_masuk WHERE id_masuk = ?");
-        $del->execute([$id_masuk]);
-
-        // 5. Catat audit log pembatalan
-        writeAuditLog(
-            'DELETE', 
-            'barang_masuk', 
-            $id_masuk, 
-            "Membatalkan penerimaan barang masuk: {$trx['nama_barang']} (Qty: {$trx['qty']})"
-        );
+        // Now update status instead of delete
+        $upd = $conn->prepare("UPDATE barang_masuk SET status = 'Dibatalkan' WHERE COALESCE(kode_transaksi, id_masuk) = ?");
+        $upd->execute([$trx_code]);
 
         $conn->commit();
-        echo json_encode(['status' => 'success', 'msg' => "Transaksi penerimaan {$trx['nama_barang']} berhasil dibatalkan."]);
+        echo json_encode(['status' => 'success', 'msg' => "Transaksi berhasil dibatalkan dan stok Gudang telah dikurangi kembali."]);
     } catch (Exception $e) {
         $conn->rollBack();
         echo json_encode(['status' => 'error', 'msg' => $e->getMessage()]);
@@ -58,172 +57,143 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Handle GET request to display details
-if (!canDo('barangmasuk', 'view')) {
-    echo "<div class='p-4 text-red-650 bg-red-50 border border-red-200 rounded-xl text-sm'>Anda tidak memiliki akses untuk melihat detail barang masuk.</div>";
-    exit;
-}
+if (!canDo('barangmasuk', 'view')) exit;
+global $conn;
 
-global $conn, $sistem;
-
-$id_masuk = (int)($_GET['id'] ?? $_GET['keycode'] ?? 0);
-if (!$id_masuk) {
-    echo "<script>window.location.href='$sistem/barangmasuk';</script>";
-    exit;
-}
+$is_readonly = isset($_GET['readonly']) && $_GET['readonly'] == '1';
+$trx_code = $_GET['id'] ?? $_GET['keycode'] ?? '';
+if (!$trx_code) exit;
 
 try {
     $st = $conn->prepare("
-        SELECT bm.*, b.nama_barang, b.barcode, b.kategori, b.satuan, s.nama_supplier, s.telepon as supplier_telp, u.nama as operator
+        SELECT bm.*, b.nama_barang, b.barcode, b.satuan, s.nama_supplier, u.nama as operator
         FROM barang_masuk bm
         JOIN barang b ON bm.id_barang = b.id_barang
         LEFT JOIN supplier s ON bm.id_supplier = s.id_supplier
         LEFT JOIN users u ON bm.id_user = u.id_user
-        WHERE bm.id_masuk = ?
+        WHERE COALESCE(bm.kode_transaksi, bm.id_masuk) = ?
     ");
-    $st->execute([$id_masuk]);
-    $trx = $st->fetch();
+    $st->execute([$trx_code]);
+    $items = $st->fetchAll();
 } catch (Exception $e) {
-    $trx = null;
+    $items = [];
 }
 
-if (!$trx) {
-    echo "<div class='p-4 text-red-600 bg-red-50 border border-red-200 rounded-xl text-sm'>Transaksi tidak ditemukan.</div>";
+if (!$items) {
+    echo "<div class='p-8 text-center text-red-500 font-medium'><i class='fa-solid fa-triangle-exclamation text-2xl mb-2 block'></i>Transaksi tidak ditemukan.</div>";
     exit;
+}
+
+$first = $items[0];
+$total_qty = 0;
+foreach ($items as $i) {
+    $total_qty += $i['qty'];
 }
 ?>
 
-<div class="fade-up max-w-xl mx-auto space-y-5">
-    
-    <!-- Header -->
+<!-- Modal Header -->
+<div class="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
     <div class="flex items-center gap-3">
-        <a href="<?= $sistem ?>/barangmasuk" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors text-slate-500">
-            <i class="fa-solid fa-arrow-left text-sm"></i>
-        </a>
+        <div class="w-12 h-12 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center shadow-sm border border-sky-100/50">
+            <i class="fa-solid fa-truck-ramp-box text-xl animate-pulse"></i>
+        </div>
         <div>
-            <h1 class="text-xl font-bold text-slate-800">Detail Penerimaan Barang</h1>
-            <p class="text-slate-500 text-sm">Informasi lengkap transaksi masuk barang.</p>
+            <div class="flex items-center gap-2">
+                <h3 class="text-lg font-bold text-slate-800">Detail Penerimaan</h3>
+                <?php
+                $statusText = $first['status'] ?: 'Diterima';
+                $statusColor = $statusText === 'Dibatalkan' ? 'rose' : 'emerald';
+                ?>
+                <span class="bg-<?= $statusColor ?>-50 text-<?= $statusColor ?>-700 border border-<?= $statusColor ?>-200 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                    <?= $statusText ?>
+                </span>
+            </div>
+            <p class="text-xs text-slate-500 font-medium mt-0.5">Ref: <span class="font-mono text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100"><?= htmlspecialchars($trx_code) ?></span></p>
         </div>
     </div>
-
-    <!-- Detail Card -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        
-        <!-- Header Info -->
-        <div class="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-sky-50 border border-sky-100 rounded-xl flex items-center justify-center text-sky-700 text-base">
-                    <i class="fa-solid fa-truck-ramp-box"></i>
-                </div>
-                <div>
-                    <h3 class="text-sm font-bold text-slate-800">No. Penerimaan: #<?= $trx['id_masuk'] ?></h3>
-                    <p class="text-xs text-slate-400">Diinput pada <?= date('d M Y H:i', strtotime($trx['created_at'])) ?></p>
-                </div>
-            </div>
-            <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-lg">
-                Selesai
-            </span>
-        </div>
-
-        <div class="p-6 space-y-4 divide-y divide-slate-100">
-            
-            <!-- Metadata -->
-            <div class="grid grid-cols-2 gap-4 pb-4 text-xs">
-                <div>
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Tanggal Transaksi</span>
-                    <span class="text-sm font-semibold text-slate-700"><?= date('d F Y', strtotime($trx['tanggal'])) ?></span>
-                </div>
-                <div>
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Operator Penerima</span>
-                    <span class="text-sm font-semibold text-slate-700"><?= sanitize($trx['operator'] ?: 'System') ?></span>
-                </div>
-            </div>
-
-            <!-- Barang Detail -->
-            <div class="py-4 space-y-3">
-                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Informasi Barang</span>
-                <div class="bg-slate-50 border border-slate-150 rounded-xl p-4 flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-bold text-slate-700"><?= sanitize($trx['nama_barang']) ?></p>
-                        <p class="text-[10px] text-slate-400 mt-0.5">
-                            Kategori: <?= sanitize($trx['kategori'] ?: 'Lainnya') ?> | Barcode: <?= sanitize($trx['barcode'] ?: '—') ?>
-                        </p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-[10px] text-slate-400">Jumlah Masuk</p>
-                        <p class="text-base font-black text-slate-800"><?= number_format($trx['qty']) ?> <?= sanitize($trx['satuan'] ?: 'Pcs') ?></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Supplier Detail -->
-            <div class="py-4 space-y-2">
-                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Pemasok / Supplier</span>
-                <?php if ($trx['id_supplier']): ?>
-                <div class="border border-slate-200 rounded-xl p-3.5 flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-semibold text-slate-700"><?= sanitize($trx['nama_supplier']) ?></p>
-                        <p class="text-xs text-slate-450 mt-0.5">Hubungi: <?= sanitize($trx['supplier_telp'] ?: '—') ?></p>
-                    </div>
-                    <i class="fa-solid fa-building-user text-slate-300 text-lg"></i>
-                </div>
-                <?php else: ?>
-                <p class="text-xs text-slate-450 italic">Penerimaan barang tanpa supplier (Pembelian lokal/langsung).</p>
-                <?php endif; ?>
-            </div>
-
-            <!-- Keterangan -->
-            <div class="pt-4">
-                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Catatan / Keterangan</span>
-                <p class="text-sm text-slate-600 bg-slate-50/50 border border-slate-100 rounded-xl p-3.5 italic">
-                    <?= sanitize($trx['keterangan'] ?: 'Tidak ada catatan tambahan untuk transaksi ini.') ?>
-                </p>
-            </div>
-
-        </div>
-
-        <!-- Footer -->
-        <?php if (canDo('barangmasuk', 'delete')): ?>
-        <div class="flex justify-end px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-            <button onclick="cancelMasuk(<?= $trx['id_masuk'] ?>, '<?= sanitize($trx['nama_barang']) ?>', <?= $trx['qty'] ?>)"
-                    class="inline-flex items-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-600 px-5 py-2 rounded-xl text-sm font-semibold transition-all border border-rose-100">
-                <i class="fa-solid fa-trash-can"></i> Batalkan Transaksi
-            </button>
-        </div>
-        <?php endif; ?>
-    </div>
+    <button type="button" onclick="closeLgModal()" class="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+        <i class="fa-solid fa-xmark text-lg"></i>
+    </button>
 </div>
 
-<script>
-function cancelMasuk(id, nama, qty) {
-    Swal.fire({
-        title: 'Batalkan Penerimaan Barang?',
-        html: `Apakah Anda yakin ingin membatalkan penerimaan <b>${nama}</b> sebanyak <b>${qty} pcs</b>?<br><span class="text-xs text-rose-500 font-semibold">*Stok barang di Gudang Pusat akan dikurangi kembali.</span>`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#ef4444',
-        cancelButtonColor: '#94a3b8',
-        confirmButtonText: 'Ya, Batalkan!',
-        cancelButtonText: 'Kembali'
-    }).then(result => {
-        if (!result.isConfirmed) return;
-        
-        Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-        const fd = new FormData();
-        fd.append('action', 'cancel_transaction');
-        fd.append('id_masuk', id);
-        
-        fetch('<?= $sistem ?>/barangmasuk/v/' + id, { method: 'POST', body: fd })
-            .then(r => r.json())
-            .then(res => {
-                if (res.status === 'success') {
-                    Swal.fire({ icon: 'success', title: 'Berhasil Dibatalkan!', text: res.msg, timer: 1500, showConfirmButton: false })
-                        .then(() => window.location.href = '<?= $sistem ?>/barangmasuk');
-                } else {
-                    Swal.fire({ icon: 'error', title: 'Gagal!', text: res.msg });
-                }
-            })
-            .catch(() => Swal.fire({ icon: 'error', title: 'Error!', text: 'Koneksi gagal atau sesi habis.' }));
-    });
-}
-</script>
+<!-- Modal Body -->
+<div class="p-6 space-y-6">
+    <!-- Meta Info Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-gradient-to-br from-slate-50 to-white border border-slate-150 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+            <div class="w-8 h-8 bg-sky-500/10 text-sky-600 rounded-xl flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-truck text-sm"></i>
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Supplier Pengirim</p>
+                <p class="text-sm font-bold text-slate-800 leading-tight"><?= sanitize($first['nama_supplier'] ?? ($first['supplier_lainnya'] ?? 'Tanpa Supplier')) ?></p>
+            </div>
+        </div>
+        <div class="bg-gradient-to-br from-slate-50 to-white border border-slate-150 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+            <div class="w-8 h-8 bg-indigo-500/10 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-calendar-user text-sm"></i>
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tanggal & Operator</p>
+                <p class="text-sm font-bold text-slate-800 leading-tight"><?= date('d F Y', strtotime($first['tanggal'])) ?></p>
+                <p class="text-xs text-slate-500 font-semibold mt-1">Oleh: <?= sanitize($first['operator'] ?? 'System') ?></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Items Section -->
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Daftar Barang Masuk</p>
+            <span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full"><?= count($items) ?> Item</span>
+        </div>
+        <div class="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
+            <table class="w-full text-left text-sm border-collapse">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200">
+                        <th class="px-5 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider">Nama Barang / Barcode</th>
+                        <th class="px-5 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider text-right w-40">Qty Masuk</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-150">
+                    <?php foreach ($items as $i): ?>
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        <td class="px-5 py-3.5">
+                            <p class="font-bold text-slate-700"><?= sanitize($i['nama_barang'] ?? '') ?></p>
+                            <p class="text-[11px] text-slate-400 mt-0.5 font-mono"><?= sanitize($i['barcode'] ?? '') ?></p>
+                        </td>
+                        <td class="px-5 py-3.5 text-right font-mono">
+                            <span class="font-black text-emerald-600">+<?= number_format($i['qty']) ?></span>
+                            <span class="text-xs text-slate-400 font-sans font-semibold ml-1"><?= sanitize($i['satuan'] ?? 'Pcs') ?></span>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                    <tr class="bg-slate-50/80 border-t-2 border-slate-200 font-bold">
+                        <td class="px-5 py-4 text-xs text-slate-500 uppercase tracking-wider">Total Akumulasi Qty</td>
+                        <td class="px-5 py-4 text-right font-mono text-base text-emerald-600">+<?= number_format($total_qty) ?> Pcs</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Keterangan Section -->
+    <?php if (!empty($first['keterangan'])): ?>
+    <div class="bg-amber-50/50 border border-amber-200/60 p-4 rounded-2xl flex gap-3 shadow-sm shadow-amber-50/20">
+        <div class="w-8 h-8 bg-amber-500/10 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-comment-dots text-sm"></i>
+        </div>
+        <div>
+            <p class="text-[10px] font-bold text-amber-650 uppercase tracking-wider mb-1">Catatan / Keterangan</p>
+            <p class="text-xs text-slate-650 leading-relaxed italic">"<?= sanitize($first['keterangan'] ?? '') ?>"</p>
+        </div>
+    </div>
+    <?php endif; ?>
+</div>
+
+<!-- Modal Footer -->
+<div class="px-6 py-4 border-t border-slate-150 bg-slate-50/50 flex justify-end gap-3 rounded-b-2xl">
+    <button type="button" onclick="closeLgModal()" class="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 text-sm font-semibold transition-colors">Tutup</button>
+</div>

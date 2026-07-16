@@ -6,15 +6,33 @@ if (!canDo('barangmasuk', 'view')) {
 
 global $conn, $sistem;
 
-// Fetch history of barang masuk
+// Pagination parameters
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$limit = isset($_GET['limit']) ? max(10, min(100, (int)$_GET['limit'])) : 25;
+$offset = ($page - 1) * $limit;
+
+// Hitung total data untuk pagination
+try {
+    $totalData = (int)$conn->query("SELECT COUNT(DISTINCT COALESCE(kode_transaksi, id_masuk)) FROM barang_masuk")->fetchColumn();
+} catch (Exception $e) {
+    $totalData = 0;
+}
+
+// Fetch history of barang masuk dengan pagination (Group by trx)
 try {
     $list = $conn->query("
-        SELECT bm.*, b.nama_barang, b.barcode, b.satuan, s.nama_supplier, u.nama as operator
+        SELECT COALESCE(bm.kode_transaksi, bm.id_masuk) as ref_trx, 
+               MAX(bm.id_masuk) as id_masuk, bm.tanggal, bm.keterangan, bm.supplier_lainnya, 
+               s.nama_supplier, u.nama as operator,
+               COUNT(bm.id_barang) as total_item, 
+               SUM(bm.qty) as total_qty,
+               MAX(bm.status) as status_trx
         FROM barang_masuk bm
-        JOIN barang b ON bm.id_barang = b.id_barang
         LEFT JOIN supplier s ON bm.id_supplier = s.id_supplier
         LEFT JOIN users u ON bm.id_user = u.id_user
-        ORDER BY bm.tanggal DESC, bm.id_masuk DESC
+        GROUP BY ref_trx
+        ORDER BY bm.tanggal DESC, id_masuk DESC
+        LIMIT $limit OFFSET $offset
     ")->fetchAll();
 } catch (Exception $e) {
     $list = [];
@@ -50,12 +68,13 @@ try {
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         
         <!-- Search Bar -->
-        <div class="flex items-center px-5 py-4 border-b border-slate-100 bg-slate-50/20">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/20 gap-3">
             <div class="relative flex-1 max-w-sm">
                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                 <input id="searchMasuk" type="text" placeholder="Cari nama barang, barcode, atau supplier..."
                        class="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
             </div>
+            <?php echo generateShowEntries($limit, 'barangmasuk'); ?>
         </div>
 
         <div class="overflow-x-auto">
@@ -64,12 +83,12 @@ try {
                     <tr class="bg-slate-50 border-b border-slate-200">
                         <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-12 text-center">No.</th>
                         <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tanggal</th>
-                        <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Barang</th>
                         <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Supplier</th>
-                        <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">Qty</th>
+                        <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Item</th>
+                        <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Qty</th>
+                        <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Status</th>
                         <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Keterangan</th>
-                        <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Operator</th>
-                        <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">Aksi</th>
+                        <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -81,9 +100,13 @@ try {
                         </td>
                     </tr>
                     <?php else: ?>
-                    <?php $no = 1; foreach ($list as $r): ?>
+                    <?php $no = $offset + 1; foreach ($list as $r): 
+                        $statusText = $r['status_trx'] ?: 'Diterima';
+                        $statusColor = $statusText === 'Dibatalkan' ? 'rose' : 'emerald';
+                        $statusIcon = $statusText === 'Dibatalkan' ? 'xmark' : 'check';
+                    ?>
                     <tr class="hover:bg-slate-50/50 transition-colors masuk-row" 
-                        data-search="<?= strtolower($r['nama_barang'].' '.$r['barcode'].' '.$r['nama_supplier'].' '.$r['keterangan']) ?>">
+                        data-search="<?= strtolower($r['ref_trx'].' '.$r['nama_supplier'].' '.$r['keterangan']) ?>">
                         
                         <!-- No -->
                         <td class="px-5 py-3.5 text-center text-sm font-semibold text-slate-500 font-mono"><?= $no++ ?></td>
@@ -93,24 +116,26 @@ try {
                             <?= date('d M Y', strtotime($r['tanggal'])) ?>
                         </td>
 
-                        <!-- Barang -->
-                        <td class="px-5 py-3.5">
-                            <span class="text-sm font-semibold text-slate-800 block"><?= sanitize($r['nama_barang']) ?></span>
-                            <?php if ($r['barcode']): ?>
-                            <span class="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono text-[10px] mt-0.5 inline-block">
-                                <i class="fa-solid fa-barcode mr-1 text-[9px]"></i><?= $r['barcode'] ?>
-                            </span>
-                            <?php endif; ?>
-                        </td>
-
                         <!-- Supplier -->
-                        <td class="px-5 py-3.5 text-sm text-slate-600">
-                            <?= sanitize($r['nama_supplier'] ?: '—') ?>
+                        <td class="px-5 py-3.5 text-sm font-semibold text-slate-800">
+                            <?= sanitize($r['nama_supplier'] ?: ($r['supplier_lainnya'] ?: 'Tanpa Supplier')) ?>
                         </td>
 
-                        <!-- Qty -->
-                        <td class="px-5 py-3.5 text-sm font-bold text-slate-800 text-right">
-                            <?= number_format($r['qty']) ?> <span class="text-slate-400 text-xs font-normal"><?= sanitize($r['satuan'] ?: 'Pcs') ?></span>
+                        <!-- Total Item -->
+                        <td class="px-5 py-3.5 text-center text-sm font-semibold text-slate-800">
+                            <?= number_format($r['total_item']) ?> Jenis
+                        </td>
+
+                        <!-- Total Qty -->
+                        <td class="px-5 py-3.5 text-center text-sm font-bold text-sky-600">
+                            +<?= number_format($r['total_qty']) ?>
+                        </td>
+
+                        <!-- Status -->
+                        <td class="px-5 py-3.5 text-center">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-<?= $statusColor ?>-50 text-<?= $statusColor ?>-700 border border-<?= $statusColor ?>-200 text-xs font-semibold">
+                                <i class="fa-solid fa-<?= $statusIcon ?>"></i> <?= sanitize($statusText) ?>
+                            </span>
                         </td>
 
                         <!-- Keterangan -->
@@ -118,20 +143,17 @@ try {
                             <?= sanitize($r['keterangan'] ?: '—') ?>
                         </td>
 
-                        <!-- Operator -->
-                        <td class="px-5 py-3.5 text-xs text-slate-600 font-medium">
-                            <?= sanitize($r['operator'] ?: 'System') ?>
-                        </td>
-
                         <!-- Aksi -->
                         <td class="px-5 py-3.5 text-center">
                             <div class="flex items-center justify-center gap-2">
-                                <a href="<?= $sistem ?>/barangmasuk/v/<?= $r['id_masuk'] ?>"
-                                   class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-100 transition-colors border border-sky-100" title="Detail">
-                                    <i class="fa-solid fa-circle-info text-xs"></i>
-                                </a>
-                                <?php if (canDo('barangmasuk', 'delete')): ?>
-                                <button onclick="cancelMasuk(<?= $r['id_masuk'] ?>, '<?= sanitize($r['nama_barang']) ?>', <?= $r['qty'] ?>)"
+                                <?php if (canDo('barangmasuk', 'view')): ?>
+                                <button type="button" onclick="openLgModal('<?= $sistem ?>/barangmasuk/v/<?= $r['ref_trx'] ?>')"
+                                   class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-100 transition-colors border border-sky-100" title="Detail Transaksi">
+                                     <i class="fa-solid fa-circle-info text-xs"></i>
+                                </button>
+                                <?php endif; ?>
+                                <?php if (canDo('barangmasuk', 'delete') && $statusText !== 'Dibatalkan'): ?>
+                                <button onclick="cancelMasuk('<?= $r['ref_trx'] ?>', '<?= sanitize($r['nama_supplier'] ?: 'Supplier') ?>', <?= $r['total_qty'] ?>)"
                                         class="w-8 h-8 rounded-lg bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 flex items-center justify-center transition-colors" title="Batalkan Transaksi">
                                     <i class="fa-solid fa-trash-can text-xs"></i>
                                 </button>
@@ -144,6 +166,9 @@ try {
                 </tbody>
             </table>
         </div>
+        
+        <!-- Pagination -->
+        <?php echo generatePagination($totalData, $limit, $sistem . '/barangmasuk', $page); ?>
     </div>
 </div>
 
@@ -173,9 +198,9 @@ function cancelMasuk(id, nama, qty) {
         Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         const fd = new FormData();
         fd.append('action', 'cancel_transaction');
-        fd.append('id_masuk', id);
+        fd.append('trx_code', id);
         
-        fetch('<?= $sistem ?>/barangmasuk/v/' + id, { method: 'POST', body: fd })
+        fetch('<?= $sistem ?>/barangmasuk/v/' + id, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.json())
             .then(res => {
                 if (res.status === 'success') {

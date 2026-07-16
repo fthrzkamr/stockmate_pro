@@ -8,49 +8,65 @@ global $conn, $sistem;
 
 // Ambil daftar outlet
 $outlets = $conn->query("SELECT * FROM outlet ORDER BY nama_outlet ASC")->fetchAll();
-// Ambil daftar barang yang stoknya lebih dari 0
+
+// Ambil daftar barang yang stoknya lebih dari 0 (JSON untuk JS)
 $barangs = $conn->query("
-    SELECT b.*, t.nama_tipe, i.stok 
+    SELECT b.id_barang, b.nama_barang, b.barcode, b.satuan, i.stok 
     FROM barang b 
     JOIN inventory i ON b.id_barang = i.id_barang
-    LEFT JOIN tipe_barang t ON b.id_tipe = t.id_tipe 
     WHERE i.stok > 0
     ORDER BY b.nama_barang ASC
-")->fetchAll();
+")->fetchAll(PDO::FETCH_ASSOC);
 
 $error = '';
+$errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tanggal   = $_POST['tanggal'] ?? date('Y-m-d');
-    $id_outlet = (int)($_POST['id_outlet'] ?? 0);
-    $id_barang = (int)($_POST['id_barang'] ?? 0);
-    $qty       = (int)($_POST['qty'] ?? 0);
-    $keterangan= trim($_POST['keterangan'] ?? '');
-    $id_user   = $_SESSION['user_id'] ?? null;
+    $tanggal    = $_POST['tanggal'] ?? date('Y-m-d');
+    $id_outlet  = (int)($_POST['id_outlet'] ?? 0);
+    $keterangan = trim($_POST['keterangan'] ?? '');
+    $id_user    = $_SESSION['user_id'] ?? null;
 
-    if (!$id_outlet || !$id_barang || $qty <= 0) {
-        $error = "Pilih Outlet, pilih Barang, dan isi Jumlah (Qty) dengan benar!";
+    $items_id  = $_POST['item_id_barang'] ?? [];
+    $items_qty = $_POST['item_qty'] ?? [];
+
+    if (!$id_outlet) {
+        $error = "Pilih Outlet Tujuan terlebih dahulu!";
+    } elseif (empty($items_id)) {
+        $error = "Tambahkan minimal 1 barang ke daftar pengiriman!";
     } else {
-        // Cek apakah stok cukup
-        $cekStok = $conn->prepare("SELECT stok, nama_barang FROM inventory i JOIN barang b ON i.id_barang=b.id_barang WHERE i.id_barang = ?");
-        $cekStok->execute([$id_barang]);
-        $stokAktual = $cekStok->fetch();
+        // Validasi semua item
+        foreach ($items_id as $idx => $id_barang) {
+            $id_barang = (int)$id_barang;
+            $qty       = (int)($items_qty[$idx] ?? 0);
+            if ($qty <= 0) { $errors[] = "Qty untuk item #".($idx+1)." tidak valid."; continue; }
 
-        if (!$stokAktual || $stokAktual['stok'] < $qty) {
-            $error = "Stok " . sanitize($stokAktual['nama_barang'] ?? 'Barang') . " tidak mencukupi! Sisa stok sistem: " . ($stokAktual['stok'] ?? 0);
-        } else {
+            $cekStok = $conn->prepare("SELECT stok, nama_barang FROM inventory i JOIN barang b ON i.id_barang=b.id_barang WHERE i.id_barang = ?");
+            $cekStok->execute([$id_barang]);
+            $stokAktual = $cekStok->fetch();
+
+            if (!$stokAktual || $stokAktual['stok'] < $qty) {
+                $errors[] = "Stok <b>" . sanitize($stokAktual['nama_barang'] ?? 'Barang') . "</b> tidak mencukupi! Stok tersedia: " . ($stokAktual['stok'] ?? 0);
+            }
+        }
+
+        if (empty($errors)) {
+            $kode_transaksi = 'TRX-OUT-' . time() . rand(10, 99);
             try {
-                // Insert ke barang_keluar dengan status Pending
                 $stmt = $conn->prepare("
-                    INSERT INTO barang_keluar (tanggal, id_outlet, id_barang, qty, keterangan, id_user, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 'Pending')
+                    INSERT INTO barang_keluar (kode_transaksi, tanggal, id_outlet, id_barang, qty, keterangan, id_user, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')
                 ");
-                $stmt->execute([$tanggal, $id_outlet, $id_barang, $qty, $keterangan ?: null, $id_user]);
-                $new_id = (int)$conn->lastInsertId();
+                foreach ($items_id as $idx => $id_barang) {
+                    $id_barang = (int)$id_barang;
+                    $qty       = (int)($items_qty[$idx] ?? 0);
+                    if ($qty <= 0) continue;
+                    $stmt->execute([$kode_transaksi, $tanggal, $id_outlet, $id_barang, $qty, $keterangan ?: null, $id_user]);
+                    $new_id = (int)$conn->lastInsertId();
+                    writeAuditLog('CREATE', 'barang_keluar', $new_id, "Mengirim $qty item ke Outlet ID: $id_outlet");
+                }
 
-                writeAuditLog('CREATE', 'barang_keluar', $new_id, "Mengirim " . $qty . " item ke Outlet ID: $id_outlet");
-                
-                $_SESSION['flash_success'] = "Barang berhasil dikirim dan sedang <b>Menunggu Diterima</b> oleh Outlet.";
+                $_SESSION['flash_success'] = "Berhasil mengirim <b>" . count($items_id) . " jenis barang</b> dan sedang <b>Menunggu Diterima</b> oleh Outlet.";
                 echo "<script>window.location.href='$sistem/barangkeluar';</script>";
                 exit;
             } catch (Exception $e) {
@@ -61,233 +77,378 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 
-<div class="fade-up max-w-xl mx-auto space-y-5">
+<div class="fade-up max-w-3xl mx-auto space-y-5">
     <div class="flex items-center gap-3">
         <a href="<?= $sistem ?>/barangkeluar" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors text-slate-500">
             <i class="fa-solid fa-arrow-left text-sm"></i>
         </a>
         <div>
             <h1 class="text-xl font-bold text-slate-800">Distribusi Barang</h1>
-            <p class="text-slate-500 text-sm mt-0.5">Kirim barang dari gudang pusat ke outlet.</p>
+            <p class="text-slate-500 text-sm mt-0.5">Kirim beberapa barang sekaligus dari gudang pusat ke outlet.</p>
         </div>
     </div>
 
     <?php if ($error): ?>
-    <div class="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm shadow-sm">
+    <div class="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
         <i class="fa-solid fa-circle-xmark mt-0.5 flex-shrink-0 text-red-500"></i>
         <span><?= $error ?></span>
     </div>
     <?php endif; ?>
 
-    <form method="POST" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-            <p class="text-sm font-semibold text-slate-700">
-                <i class="fa-solid fa-truck-fast text-indigo-500 mr-2"></i>Detail Pengiriman
-            </p>
-        </div>
-        
-        <div class="p-6 space-y-5">
-            <!-- Banner Scanner (Sama seperti Barang Masuk) -->
-            <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 flex flex-col items-center justify-center gap-3">
-                <div class="text-center">
-                    <p class="text-sm font-bold text-sky-800">Gunakan Barcode Scanner</p>
-                    <p class="text-xs text-sky-600/80 mt-0.5">Tunjukkan barcode produk ke kamera HP untuk memindai barang keluar.</p>
+    <?php if (!empty($errors)): ?>
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm space-y-1">
+        <p class="font-bold flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> Ditemukan kesalahan:</p>
+        <?php foreach ($errors as $e): ?>
+            <p class="pl-4">• <?= $e ?></p>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <form method="POST" id="formKeluar" onsubmit="return validateForm()">
+        <!-- Section 1: Info Pengiriman -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <p class="text-sm font-semibold text-slate-700">
+                    <i class="fa-solid fa-truck-fast text-indigo-500 mr-2"></i>Informasi Pengiriman
+                </p>
+            </div>
+            <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Keluar</label>
+                    <input type="date" name="tanggal" required value="<?= htmlspecialchars($_POST['tanggal'] ?? date('Y-m-d')) ?>"
+                           class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
                 </div>
-                <button type="button" onclick="startScanner()" 
-                        class="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all">
-                    <i class="fa-solid fa-camera"></i> Mulai Scan Kamera
-                </button>
-                
-                <!-- Scanner Box Inline Container -->
-                <div id="scannerBox" class="hidden w-full max-w-md bg-black rounded-xl overflow-hidden relative border border-slate-700 mt-2">
-                    <div id="interactiveReader" class="w-full"></div>
-                    <div class="absolute bottom-4 left-0 right-0 flex justify-center">
-                        <button type="button" onclick="stopScanner()" 
-                                class="bg-red-500 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors">
-                            Tutup Kamera
-                        </button>
-                    </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Outlet Tujuan</label>
+                    <select name="id_outlet" id="id_outlet" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
+                        <option value="">-- Pilih Outlet --</option>
+                        <?php foreach ($outlets as $o): ?>
+                            <option value="<?= $o['id_outlet'] ?>" <?= (isset($_POST['id_outlet']) && $_POST['id_outlet']==$o['id_outlet']) ? 'selected' : '' ?>>
+                                <?= sanitize($o['nama_outlet']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Keluar</label>
-                <input type="date" name="tanggal" required value="<?= htmlspecialchars($_POST['tanggal'] ?? date('Y-m-d')) ?>"
-                       class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Pilih Outlet Tujuan</label>
-                <select name="id_outlet" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
-                    <option value="">-- Pilih Outlet --</option>
-                    <?php foreach ($outlets as $o): ?>
-                        <option value="<?= $o['id_outlet'] ?>" <?= (isset($_POST['id_outlet']) && $_POST['id_outlet']==$o['id_outlet']) ? 'selected' : '' ?>>
-                            <?= sanitize($o['nama_outlet']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <div class="space-y-2">
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Nama Barang / Produk</label>
-                <select name="id_barang" id="id_barang" onchange="updateProductInfo(this.value)" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all select2-init bg-white">
-                    <option value="">-- Ketik Nama atau Scan Barcode --</option>
-                    <?php foreach ($barangs as $b): ?>
-                        <option value="<?= $b['id_barang'] ?>" data-barcode="<?= sanitize($b['barcode']) ?>" data-stok="<?= $b['stok'] ?>" data-satuan="<?= sanitize($b['satuan']) ?>" data-nama="<?= sanitize($b['nama_barang']) ?>" <?= (isset($_POST['id_barang']) && $_POST['id_barang']==$b['id_barang']) ? 'selected' : '' ?>>
-                            <?= sanitize($b['nama_barang']) ?> <?= $b['barcode'] ? "[{$b['barcode']}]" : "" ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-
-                <!-- Product Info Card -->
-                <div id="productInfoCard" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between text-xs transition-all">
-                    <div>
-                        <p class="font-bold text-slate-700" id="infoNamaBarang">—</p>
-                        <p class="text-slate-400 mt-0.5" id="infoBarcodeBarang">Barcode: —</p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-slate-400">Stok Sistem</p>
-                        <p class="font-bold text-indigo-600 text-sm" id="infoStokBarang">0 Pcs</p>
-                    </div>
-                </div>
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Jumlah (Qty)</label>
-                <div class="relative">
-                    <input type="number" name="qty" id="qty" required min="1" value="<?= htmlspecialchars($_POST['qty'] ?? '') ?>"
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Keterangan / Catatan <span class="text-slate-400 font-normal">(Opsional)</span></label>
+                    <input type="text" name="keterangan" value="<?= htmlspecialchars($_POST['keterangan'] ?? '') ?>" placeholder="Nomor surat jalan, catatan pengiriman, dll..."
                            class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all">
-                    <div class="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 uppercase" id="satuan-label">
-                        Pcs
-                    </div>
                 </div>
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Keterangan / Catatan</label>
-                <textarea name="keterangan" rows="2" placeholder="Catatan pengiriman..."
-                          class="w-full px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"><?= htmlspecialchars($_POST['keterangan'] ?? '') ?></textarea>
             </div>
         </div>
 
-        <div class="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+        <!-- Section 2: Tambah Barang -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <p class="text-sm font-semibold text-slate-700">
+                    <i class="fa-solid fa-boxes-stacked text-sky-500 mr-2"></i>Tambah Barang ke Daftar
+                </p>
+            </div>
+            <div class="p-6 space-y-4">
+                <!-- Scanner Banner -->
+                <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 flex flex-col items-center gap-3">
+                    <div class="text-center">
+                        <p class="text-sm font-bold text-sky-800">Gunakan Barcode Scanner</p>
+                        <p class="text-xs text-sky-600/80 mt-0.5">Scan barcode produk — barang otomatis masuk ke daftar.</p>
+                    </div>
+                    <button type="button" onclick="startScanner()"
+                            class="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all">
+                        <i class="fa-solid fa-camera"></i> Mulai Scan Kamera
+                    </button>
+                    <div id="scannerBox" class="hidden w-full max-w-md bg-black rounded-xl overflow-hidden flex-col">
+                        <div id="interactiveReader" class="w-full"></div>
+                        <div class="p-3 bg-slate-800 flex justify-center">
+                            <button type="button" onclick="stopScanner()"
+                                    class="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2">
+                                <i class="fa-solid fa-circle-xmark"></i> Tutup Kamera
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual Add -->
+                <div class="flex gap-2">
+                    <select id="selectBarangAdd" class="flex-1 px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white select2-barang">
+                        <option value="">-- Ketik Nama Barang atau Pilih --</option>
+                        <?php foreach ($barangs as $b): ?>
+                            <option value="<?= $b['id_barang'] ?>" data-barcode="<?= sanitize($b['barcode']) ?>" data-stok="<?= $b['stok'] ?>" data-satuan="<?= sanitize($b['satuan'] ?: 'Pcs') ?>" data-nama="<?= sanitize($b['nama_barang']) ?>">
+                                <?= sanitize($b['nama_barang']) ?> <?= $b['barcode'] ? "[{$b['barcode']}]" : "" ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="button" onclick="addItemToCart()"
+                            class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all flex items-center gap-2 flex-shrink-0">
+                        <i class="fa-solid fa-plus"></i> Tambah
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Daftar Barang (Cart) -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <p class="text-sm font-semibold text-slate-700">
+                    <i class="fa-solid fa-list-check text-emerald-500 mr-2"></i>Daftar Barang yang Akan Dikirim
+                </p>
+                <span id="cartBadge" class="text-xs bg-slate-200 text-slate-600 font-bold px-2.5 py-0.5 rounded-full">0 item</span>
+            </div>
+
+            <!-- Empty State -->
+            <div id="cartEmpty" class="px-6 py-10 text-center text-slate-400">
+                <i class="fa-regular fa-folder-open text-4xl mb-3 block text-slate-300"></i>
+                <p class="text-sm">Belum ada barang. Scan barcode atau pilih dari dropdown di atas.</p>
+            </div>
+
+            <!-- Cart Table -->
+            <div id="cartContainer" class="hidden overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 border-b border-slate-100">
+                        <tr>
+                            <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Nama Barang</th>
+                            <th class="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider w-32">Stok Gudang</th>
+                            <th class="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider w-36">Jumlah Kirim</th>
+                            <th class="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider w-16"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartBody">
+                        <!-- JS will populate this -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Hidden inputs will be appended here by JS -->
+            <div id="hiddenInputs"></div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex justify-end gap-3">
             <a href="<?= $sistem ?>/barangkeluar" class="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors text-sm font-semibold text-slate-600">Batal</a>
-            <button type="submit" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm">
                 <i class="fa-solid fa-paper-plane text-xs"></i> Kirim ke Outlet
             </button>
         </div>
     </form>
 </div>
 
-
-
-<!-- Library Select2 untuk Pencarian Dropdown -->
+<!-- Libraries -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<!-- Library HTML5 QR Code -->
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <script>
 let html5QrcodeScanner = null;
+// cart: { id_barang, nama, barcode, stok, satuan }[]
+let cart = [];
 
 $(document).ready(function() {
-    $('.select2-init').select2({
-        width: '100%'
-    });
-
-    $('#id_barang').on('change', function() {
-        let sel = $(this).find(':selected');
-        let satuan = sel.data('satuan');
-        let maxStok = sel.data('stok');
-        
-        if (satuan) {
-            $('#satuan-label').text(satuan);
-        }
-        if (maxStok !== undefined) {
-            $('#qty').attr('max', maxStok);
-        }
-    });
+    $('.select2-barang').select2({ width: '100%', placeholder: '-- Ketik Nama Barang --' });
 });
 
-// Fitur Scanner Kamera Inline
-function startScanner() {
-    $('#scannerBox').removeClass('hidden').addClass('block');
-    
-    html5QrcodeScanner = new Html5QrcodeScanner("interactiveReader", { 
-        fps: 10, 
-        qrbox: {width: 250, height: 150},
-        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-    }, false);
+// ─── CART LOGIC ──────────────────────────────────────────────────────────────
 
-    html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+function addItemToCart(idBarang = null) {
+    const select = document.getElementById('selectBarangAdd');
+    const id = idBarang || select.value;
+    if (!id) { return; }
+
+    const opt = select.querySelector(`option[value="${id}"]`);
+    if (!opt) return;
+
+    // Cek apakah sudah ada di cart
+    if (cart.find(c => c.id == id)) {
+        // Fokus ke input qty-nya saja
+        const qtyEl = document.getElementById('qty_' + id);
+        if (qtyEl) { qtyEl.focus(); qtyEl.select(); }
+        Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Barang sudah ada di daftar!', showConfirmButton: false, timer: 1500 });
+        return;
+    }
+
+    cart.push({
+        id:      id,
+        nama:    opt.dataset.nama || opt.text,
+        barcode: opt.dataset.barcode || '—',
+        stok:    parseInt(opt.dataset.stok) || 0,
+        satuan:  opt.dataset.satuan || 'Pcs',
+        qty:     1
+    });
+
+    // Disable option in dropdown
+    $('#selectBarangAdd option[value="' + id + '"]').prop('disabled', true);
+    $('#selectBarangAdd').select2({ width: '100%', placeholder: '-- Ketik Nama Barang --' });
+
+    renderCart();
+    // Reset dropdown
+    $('#selectBarangAdd').val('').trigger('change');
+
+    // Autofocus ke qty input yang baru ditambah
+    setTimeout(() => {
+        const qtyEl = document.getElementById('qty_' + id);
+        if (qtyEl) { qtyEl.focus(); qtyEl.select(); }
+    }, 100);
+}
+
+function removeFromCart(id) {
+    cart = cart.filter(c => c.id != id);
+    
+    // Re-enable option in dropdown
+    $('#selectBarangAdd option[value="' + id + '"]').prop('disabled', false);
+    $('#selectBarangAdd').select2({ width: '100%', placeholder: '-- Ketik Nama Barang --' });
+    
+    renderCart();
+}
+
+function updateQty(id, val) {
+    const item = cart.find(c => c.id == id);
+    if (item) {
+        item.qty = parseInt(val) || 1;
+    }
+}
+
+function renderCart() {
+    const tbody       = document.getElementById('cartBody');
+    const empty       = document.getElementById('cartEmpty');
+    const container   = document.getElementById('cartContainer');
+    const badge       = document.getElementById('cartBadge');
+    const hiddenDiv   = document.getElementById('hiddenInputs');
+
+    badge.textContent = cart.length + ' item';
+    hiddenDiv.innerHTML = '';
+
+    if (cart.length === 0) {
+        empty.classList.remove('hidden');
+        container.classList.add('hidden');
+        return;
+    }
+
+    empty.classList.add('hidden');
+    container.classList.remove('hidden');
+
+    tbody.innerHTML = '';
+    cart.forEach(item => {
+        const row = document.createElement('tr');
+        row.className = 'border-b border-slate-100 hover:bg-slate-50/50 transition-colors';
+        row.innerHTML = `
+            <td class="px-4 py-3">
+                <p class="font-semibold text-slate-800 text-sm">${item.nama}</p>
+                <p class="text-xs text-slate-400 mt-0.5">Barcode: ${item.barcode}</p>
+            </td>
+            <td class="px-4 py-3 text-center">
+                <span class="inline-flex items-center gap-1 text-sm font-bold ${item.stok > 0 ? 'text-emerald-600' : 'text-red-500'}">
+                    ${item.stok} <span class="text-xs font-normal text-slate-400">${item.satuan}</span>
+                </span>
+            </td>
+            <td class="px-4 py-3">
+                <div class="relative flex items-center justify-center">
+                    <input type="number" id="qty_${item.id}" value="${item.qty}" min="1" max="${item.stok}"
+                           onchange="updateQty('${item.id}', this.value)"
+                           oninput="updateQty('${item.id}', this.value)"
+                           class="w-24 text-center px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all font-semibold">
+                    <span class="ml-1.5 text-xs text-slate-400">${item.satuan}</span>
+                </div>
+            </td>
+            <td class="px-4 py-3 text-center">
+                <button type="button" onclick="removeFromCart('${item.id}')"
+                        class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-all mx-auto">
+                    <i class="fa-solid fa-trash text-xs"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+
+        // Hidden inputs for form submission
+        hiddenDiv.innerHTML += `<input type="hidden" name="item_id_barang[]" value="${item.id}">`;
+        hiddenDiv.innerHTML += `<input type="hidden" id="hidden_qty_${item.id}" name="item_qty[]" value="${item.qty}">`;
+    });
+}
+
+function validateForm() {
+    // Sync qty values dari input ke hidden inputs
+    cart.forEach(item => {
+        const qtyEl = document.getElementById('qty_' + item.id);
+        const hiddenEl = document.getElementById('hidden_qty_' + item.id);
+        if (qtyEl && hiddenEl) {
+            hiddenEl.value = qtyEl.value;
+        }
+
+        // Validasi qty > stok
+        if (parseInt(qtyEl?.value || 0) > item.stok) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Stok Tidak Cukup!',
+                html: `Qty <b>${item.nama}</b> melebihi stok gudang (${item.stok} ${item.satuan}).`
+            });
+            qtyEl.focus();
+            return false;
+        }
+    });
+
+    if (cart.length === 0) {
+        Swal.fire({ icon: 'warning', title: 'Daftar Kosong', text: 'Tambahkan minimal 1 barang!' });
+        return false;
+    }
+    if (!document.getElementById('id_outlet').value) {
+        Swal.fire({ icon: 'warning', title: 'Pilih Outlet', text: 'Pilih outlet tujuan pengiriman!' });
+        return false;
+    }
+    return true;
+}
+
+// ─── SCANNER LOGIC ───────────────────────────────────────────────────────────
+
+function startScanner() {
+    const scannerBox = document.getElementById('scannerBox');
+    scannerBox.classList.remove('hidden');
+    scannerBox.classList.add('flex');
+
+    if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5Qrcode("interactiveReader");
+    }
+
+    html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 24, qrbox: { width: 300, height: 120 }, aspectRatio: 1.777778 },
+        (decodedText) => {
+            stopScanner();
+            Swal.fire({ title: 'Mencari Produk...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            setTimeout(() => {
+                let found = null;
+                document.querySelectorAll('#selectBarangAdd option').forEach(opt => {
+                    if (opt.dataset.barcode == decodedText) found = opt;
+                });
+
+                Swal.close();
+                if (found) {
+                    addItemToCart(found.value);
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Ditambahkan: ' + found.dataset.nama, showConfirmButton: false, timer: 2000 });
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Tidak Ditemukan', text: 'Barcode ' + decodedText + ' belum terdaftar atau stok kosong.' });
+                }
+            }, 400);
+        },
+        () => { /* abaikan error per-frame */ }
+    ).catch(err => {
+        let msg = 'Izin kamera ditolak atau kamera tidak ditemukan.';
+        Swal.fire({ icon: 'error', title: 'Kamera Gagal', html: msg });
+        scannerBox.classList.add('hidden');
+        scannerBox.classList.remove('flex');
+    });
 }
 
 function stopScanner() {
-    if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear().catch(error => {
-            console.error("Failed to clear scanner. ", error);
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.stop().then(() => {
+            document.getElementById('scannerBox').classList.add('hidden');
+            document.getElementById('scannerBox').classList.remove('flex');
+        }).catch(() => {
+            document.getElementById('scannerBox').classList.add('hidden');
+            document.getElementById('scannerBox').classList.remove('flex');
         });
-    }
-    $('#scannerBox').addClass('hidden').removeClass('block');
-}
-
-function onScanSuccess(decodedText, decodedResult) {
-    stopScanner();
-    
-    Swal.fire({ title: 'Mencari Produk...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-    
-    setTimeout(() => {
-        let found = false;
-        let nama_barang = '';
-        $('#id_barang option').each(function() {
-            if ($(this).data('barcode') == decodedText) {
-                $('#id_barang').val($(this).val()).trigger('change');
-                nama_barang = $(this).data('nama') || $(this).text();
-                found = true;
-                return false;
-            }
-        });
-
-        if (found) {
-            Swal.close();
-            Swal.fire({
-                icon: 'success',
-                title: 'Produk Terdeteksi!',
-                text: nama_barang,
-                timer: 1500,
-                showConfirmButton: false
-            });
-            setTimeout(() => { $('#qty').focus(); }, 300);
-        } else {
-            Swal.close();
-            Swal.fire({
-                icon: 'error',
-                title: 'Tidak Ditemukan',
-                text: 'Barang dengan barcode ' + decodedText + ' belum terdaftar atau stok kosong!'
-            });
-        }
-    }, 400); // Simulasi delay loading pencarian AJAX
-}
-
-function onScanFailure(error) {
-    // Abaikan error background
-}
-
-function updateProductInfo(val) {
-    let sel = $('#id_barang').find(':selected');
-    let satuan = sel.data('satuan');
-    let maxStok = sel.data('stok');
-    let nama = sel.data('nama');
-    let barcode = sel.data('barcode');
-
-    if (val) {
-        $('#productInfoCard').removeClass('hidden').addClass('flex');
-        $('#infoNamaBarang').text(nama);
-        $('#infoBarcodeBarang').text("Barcode: " + (barcode ? barcode : "Tanpa Barcode"));
-        $('#infoStokBarang').text(maxStok + " " + satuan);
     } else {
-        $('#productInfoCard').addClass('hidden').removeClass('flex');
+        document.getElementById('scannerBox').classList.add('hidden');
+        document.getElementById('scannerBox').classList.remove('flex');
     }
 }
 </script>

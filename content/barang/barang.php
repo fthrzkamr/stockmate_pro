@@ -45,15 +45,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Ambil data semua barang
+// Pagination & Filter
+$search = $_GET['search'] ?? '';
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$limit = isset($_GET['limit']) ? max(10, min(100, (int)$_GET['limit'])) : 25;
+$offset = ($page - 1) * $limit;
+
+$whereSql = "1=1";
+$params = [];
+
+if ($search) {
+    $whereSql .= " AND (b.nama_barang LIKE ? OR b.barcode LIKE ? OR b.kategori LIKE ? OR s.nama_supplier LIKE ?)";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+}
+
+// Hitung total data untuk pagination
 try {
-    $barangList = $conn->query("
+    $stmtCount = $conn->prepare("
+        SELECT COUNT(*) 
+        FROM barang b 
+        LEFT JOIN supplier s ON b.id_supplier = s.id_supplier 
+        WHERE $whereSql
+    ");
+    $stmtCount->execute($params);
+    $totalData = (int)$stmtCount->fetchColumn();
+} catch (Exception $e) {
+    $totalData = 0;
+}
+
+// Ambil data barang dengan pagination
+try {
+    $stmt = $conn->prepare("
         SELECT b.*, s.nama_supplier, t.nama_tipe 
         FROM barang b 
         LEFT JOIN supplier s ON b.id_supplier = s.id_supplier 
         LEFT JOIN tipe_barang t ON b.id_tipe = t.id_tipe
+        WHERE $whereSql
         ORDER BY b.nama_barang ASC
-    ")->fetchAll();
+        LIMIT $limit OFFSET $offset
+    ");
+    $stmt->execute($params);
+    $barangList = $stmt->fetchAll();
 } catch (Exception $e) {
     $barangList = [];
 }
@@ -88,12 +123,18 @@ try {
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         
         <!-- Search and Filter Bar -->
-        <div class="flex items-center px-5 py-4 border-b border-slate-100 bg-slate-50/20">
-            <div class="relative flex-1 max-w-sm">
-                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                <input id="searchBarang" type="text" placeholder="Cari nama, barcode, atau kategori..."
-                       class="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-            </div>
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/20 gap-3">
+            <form method="GET" id="filterForm" class="relative flex-1 max-w-sm flex items-center gap-2">
+                <input type="hidden" name="menu" value="barang">
+                <input type="hidden" name="page" value="1">
+                <input type="hidden" name="limit" value="<?= $limit ?>">
+                <div class="relative w-full">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input id="searchBarang" name="search" type="text" value="<?= htmlspecialchars($search) ?>" placeholder="Cari nama, barcode, atau kategori..."
+                           class="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
+                </div>
+            </form>
+            <?php echo generateShowEntries($limit, 'barang', urlencode($search)); ?>
         </div>
 
         <div class="overflow-x-auto">
@@ -118,7 +159,7 @@ try {
                         </td>
                     </tr>
                     <?php else: ?>
-                    <?php $no = 1; foreach ($barangList as $b): ?>
+                    <?php $no = $offset + 1; foreach ($barangList as $b): ?>
                     <tr class="hover:bg-slate-50/50 transition-colors barang-row" 
                         data-search="<?= strtolower($b['nama_barang'].' '.$b['barcode'].' '.$b['kategori']) ?>">
                         
@@ -197,18 +238,13 @@ try {
                 </tbody>
             </table>
         </div>
+        
+        <!-- Pagination -->
+        <?php echo generatePagination($totalData, $limit, $sistem . '/barang', $page); ?>
     </div>
 </div>
 
 <script>
-// Pencarian Client-side
-document.getElementById('searchBarang')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.barang-row').forEach(row => {
-        row.style.display = row.dataset.search.includes(q) ? '' : 'none';
-    });
-});
-
 // Toggle Status (Soft Delete)
 function toggleBarang(id, nama, active) {
     const title = active ? 'Nonaktifkan Barang?' : 'Aktifkan Barang?';

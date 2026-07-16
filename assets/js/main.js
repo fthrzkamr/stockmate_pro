@@ -77,7 +77,7 @@ function confirmDelete(url, callback) {
 (function() {
     const bc = document.getElementById('breadcrumb');
     if (!bc) return;
-    const path = window.location.pathname.replace('/project_work/', '').split('/').filter(Boolean);
+    const path = window.location.pathname.replace('/stockmate_pro/', '').split('/').filter(Boolean);
     const map = {
         home:'Dashboard', barang:'Master Barang', supplier:'Supplier', outlet:'Outlet',
         barangmasuk:'Barang Masuk', barangkeluar:'Barang Keluar', terimabarang:'Terima Barang',
@@ -121,6 +121,9 @@ function updateNotification() {
                     soMenuBadge.classList.add('hidden');
                 }
             }
+
+            // Dispatch global event for Alpine component
+            window.dispatchEvent(new CustomEvent('notifications-updated', { detail: data }));
         }).catch(console.error);
 }
 

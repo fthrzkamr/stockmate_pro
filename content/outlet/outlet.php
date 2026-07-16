@@ -33,12 +33,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     exit;
 }
 
-// Ambil data
+// Pagination parameters
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$limit = isset($_GET['limit']) ? max(10, min(100, (int)$_GET['limit'])) : 25;
+$offset = ($page - 1) * $limit;
+
+// Hitung total data
+try {
+    $totalData = (int)$conn->query("SELECT COUNT(*) FROM outlet")->fetchColumn();
+} catch (Exception $e) {
+    $totalData = 0;
+}
+
+// Ambil data dengan pagination
 $outletList = $conn->query("
     SELECT o.*,
         (SELECT COUNT(*) FROM barang_keluar bk WHERE bk.id_outlet = o.id_outlet) as total_pengiriman
     FROM outlet o
     ORDER BY o.nama_outlet ASC
+    LIMIT $limit OFFSET $offset
 ")->fetchAll();
 ?>
 
@@ -73,6 +86,7 @@ $outletList = $conn->query("
                 <input type="text" id="searchOutlet" placeholder="Cari nama outlet..."
                        class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
             </div>
+            <?php echo generateShowEntries($limit, 'outlet'); ?>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left">
@@ -94,7 +108,7 @@ $outletList = $conn->query("
                         </td>
                     </tr>
                     <?php else: ?>
-                    <?php $no = 1; foreach ($outletList as $o): ?>
+                    <?php $no = $offset + 1; foreach ($outletList as $o): ?>
                     <tr class="hover:bg-slate-50/50 transition-colors outlet-row" data-name="<?= strtolower($o['nama_outlet']) ?>">
                         <td class="px-5 py-3.5 text-center text-sm font-semibold text-slate-400 font-mono"><?= $no++ ?></td>
                         <td class="px-5 py-3.5">
@@ -139,6 +153,9 @@ $outletList = $conn->query("
                 </tbody>
             </table>
         </div>
+        
+        <!-- Pagination -->
+        <?php echo generatePagination($totalData, $limit, $sistem . '/outlet', $page); ?>
     </div>
 </div>
 

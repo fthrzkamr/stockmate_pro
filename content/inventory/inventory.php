@@ -6,16 +6,51 @@ if (!canDo('inventory', 'view')) {
 
 global $conn, $sistem;
 
-// Ambil data inventory
+// Pagination & Filter parameters
+$search = $_GET['search'] ?? '';
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$limit = isset($_GET['limit']) ? max(10, min(100, (int)$_GET['limit'])) : 25;
+$offset = ($page - 1) * $limit;
+
+$whereSql = "1=1";
+$params = [];
+
+if ($search) {
+    $whereSql .= " AND (b.nama_barang LIKE ? OR b.barcode LIKE ? OR t.nama_tipe LIKE ?)";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+}
+
+// Hitung total data untuk pagination
 try {
-    $invList = $conn->query("
+    $stmtCount = $conn->prepare("
+        SELECT COUNT(*) 
+        FROM inventory i
+        JOIN barang b ON i.id_barang = b.id_barang
+        LEFT JOIN tipe_barang t ON b.id_tipe = t.id_tipe
+        WHERE $whereSql
+    ");
+    $stmtCount->execute($params);
+    $totalData = (int)$stmtCount->fetchColumn();
+} catch (Exception $e) {
+    $totalData = 0;
+}
+
+// Ambil data inventory dengan pagination
+try {
+    $stmt = $conn->prepare("
         SELECT i.*, b.nama_barang, b.barcode, b.satuan, b.kategori, t.nama_tipe,
         (SELECT SUM(qty) FROM barang_masuk bm WHERE bm.id_barang = i.id_barang) as total_masuk
         FROM inventory i
         JOIN barang b ON i.id_barang = b.id_barang
         LEFT JOIN tipe_barang t ON b.id_tipe = t.id_tipe
+        WHERE $whereSql
         ORDER BY b.nama_barang ASC
-    ")->fetchAll();
+        LIMIT $limit OFFSET $offset
+    ");
+    $stmt->execute($params);
+    $invList = $stmt->fetchAll();
 } catch (Exception $e) {
     $invList = [];
 }
@@ -23,9 +58,13 @@ try {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'get_history') {
     ob_clean(); // Bersihkan buffer agar layout sistem.php tidak ikut ter-render
     $id_barang = (int)($_POST['id_barang'] ?? 0);
+    $bulan = (int)($_POST['bulan'] ?? date('n'));
+    $tahun = (int)($_POST['tahun'] ?? date('Y'));
+    
     try {
         $histories = $conn->prepare("
             SELECT 
+                1 as sort_weight,
                 'Masuk' as tipe,
                 bm.id_masuk as id_trans,
                 bm.tanggal,
@@ -35,11 +74,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 bm.created_at
             FROM barang_masuk bm
             LEFT JOIN supplier s ON bm.id_supplier = s.id_supplier
-            WHERE bm.id_barang = ?
+            WHERE bm.id_barang = ? AND MONTH(bm.tanggal) = ? AND YEAR(bm.tanggal) = ? AND bm.status = 'Selesai'
+            
+            UNION ALL
+
+            SELECT 
+                2 as sort_weight,
+                'Batal Masuk' as tipe,
+                bm.id_masuk as id_trans,
+                bm.tanggal as tanggal,
+                bm.qty,
+                CONCAT('Batal Masuk dari ', COALESCE(bm.supplier_lainnya, s.nama_supplier, 'Supplier')) as keterangan,
+                'Koreksi Sistem' as pihak_terkait,
+                bm.created_at as created_at
+            FROM barang_masuk bm
+            LEFT JOIN supplier s ON bm.id_supplier = s.id_supplier
+            WHERE bm.id_barang = ? AND bm.status = 'Dibatalkan' AND MONTH(bm.tanggal) = ? AND YEAR(bm.tanggal) = ?
             
             UNION ALL
             
             SELECT 
+                1 as sort_weight,
                 'Keluar' as tipe,
                 bk.id_keluar as id_trans,
                 bk.tanggal,
@@ -49,12 +104,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 bk.created_at
             FROM barang_keluar bk
             LEFT JOIN outlet o ON bk.id_outlet = o.id_outlet
-            WHERE bk.id_barang = ?
+            WHERE bk.id_barang = ? AND MONTH(bk.tanggal) = ? AND YEAR(bk.tanggal) = ?
             
-            ORDER BY tanggal DESC, created_at DESC
-            LIMIT 40
+            UNION ALL
+            
+            SELECT 
+                2 as sort_weight,
+                'Dikembalikan' as tipe,
+                bk.id_keluar as id_trans,
+                bk.tanggal as tanggal,
+                bk.qty,
+                CONCAT('Dikembalikan dari ', COALESCE(o.nama_outlet, 'Outlet')) as keterangan,
+                'Gudang Pusat' as pihak_terkait,
+                bk.created_at as created_at
+            FROM barang_keluar bk
+            LEFT JOIN outlet o ON bk.id_outlet = o.id_outlet
+            WHERE bk.id_barang = ? AND bk.status = 'Dikembalikan' AND MONTH(bk.tanggal) = ? AND YEAR(bk.tanggal) = ?
+            
+            ORDER BY tanggal DESC, created_at DESC, sort_weight DESC
         ");
-        $histories->execute([$id_barang, $id_barang]);
+        $histories->execute([$id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun]);
         $data = $histories->fetchAll();
 
         if (empty($data)) {
@@ -66,6 +135,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $sign = '+';
                     $icon = 'fa-arrow-down';
                     $lbl = 'Dari: ' . sanitize($h['pihak_terkait']);
+                } elseif ($h['tipe'] === 'Dikembalikan') {
+                    $color = 'sky';
+                    $sign = '+';
+                    $icon = 'fa-rotate-left';
+                    $lbl = 'Ke: ' . sanitize($h['pihak_terkait']);
+                } elseif ($h['tipe'] === 'Batal Masuk') {
+                    $color = 'rose';
+                    $sign = '-';
+                    $icon = 'fa-rotate-left';
+                    $lbl = sanitize($h['pihak_terkait']);
                 } else {
                     $color = 'rose';
                     $sign = '-';
@@ -100,22 +179,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         </div>
     </div>
 
-    <!-- Filter & Search (Bisa pakai javascript filtering) -->
-    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div class="relative w-full sm:w-96">
-            <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input type="text" id="searchInput" placeholder="Cari nama barang, barcode, atau rak..."
-                   class="w-full pl-11 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
-        </div>
-        <div class="flex items-center gap-2 w-full sm:w-auto">
-            <button onclick="window.print()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-600 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold transition-colors">
-                <i class="fa-solid fa-print"></i> Cetak PDF
-            </button>
-        </div>
-    </div>
+
 
     <!-- Table Card -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-4">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/20 gap-3">
+            <form method="GET" id="filterForm" class="relative flex-1 max-w-sm flex items-center gap-2">
+                <input type="hidden" name="menu" value="inventory">
+                <input type="hidden" name="page" value="1">
+                <input type="hidden" name="limit" value="<?= $limit ?>">
+                <div class="relative w-full">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input id="searchInventory" name="search" type="text" value="<?= htmlspecialchars($search) ?>" placeholder="Cari nama barang atau barcode..."
+                           class="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:sky-500/30 focus:border-sky-400 transition-all bg-white">
+                </div>
+            </form>
+            <?php echo generateShowEntries($limit, 'inventory', urlencode($search)); ?>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left" id="tblInventory">
                 <thead>
@@ -137,7 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </td>
                     </tr>
                     <?php else: ?>
-                    <?php $no = 1; foreach ($invList as $inv): ?>
+                    <?php $no = $offset + 1; foreach ($invList as $inv): ?>
                     <tr class="hover:bg-slate-50/50 transition-colors inv-row" 
                         data-search="<?= strtolower($inv['nama_barang'].' '.$inv['barcode']) ?>">
                         
@@ -196,9 +276,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             </table>
         </div>
         
-        <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <p class="text-xs text-slate-500 font-medium">Total: <span class="font-bold text-slate-700"><?= count($invList) ?></span> jenis barang tercatat.</p>
-        </div>
+        <!-- Pagination -->
+        <?php echo generatePagination($totalData, $limit, $sistem . '/inventory', $page); ?>
     </div>
 </div>
 
@@ -207,22 +286,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <!-- Backdrop -->
     <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity opacity-0" id="modalHistoryBackdrop" onclick="closeHistory()"></div>
     
-    <!-- Modal Content -->
+            <!-- Modal Content -->
     <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md scale-95 opacity-0 transition-all duration-300" id="modalHistoryPanel">
-        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
             <!-- Header -->
-            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div>
-                    <h3 class="text-sm font-bold text-slate-800">Kartu Stok (Riwayat)</h3>
-                    <p class="text-[10px] text-slate-500 font-medium mt-0.5" id="historyBarangName">Nama Barang</p>
+            <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-800">Kartu Stok (Riwayat)</h3>
+                        <p class="text-[10px] text-slate-500 font-medium mt-0.5" id="historyBarangName">Nama Barang</p>
+                    </div>
+                    <button onclick="closeHistory()" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
                 </div>
-                <button onclick="closeHistory()" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
+                <!-- Filters -->
+                <div class="flex gap-2">
+                    <select id="histBulan" class="flex-1 text-xs px-2 py-1.5 border border-slate-200 rounded-lg bg-white outline-none focus:border-indigo-400">
+                        <?php 
+                        $bulanArr = [1=>'Januari',2=>'Februari',3=>'Maret',4=>'April',5=>'Mei',6=>'Juni',7=>'Juli',8=>'Agustus',9=>'September',10=>'Oktober',11=>'November',12=>'Desember'];
+                        $curBulan = date('n');
+                        foreach ($bulanArr as $k => $v) {
+                            $sel = $k == $curBulan ? 'selected' : '';
+                            echo "<option value='$k' $sel>$v</option>";
+                        }
+                        ?>
+                    </select>
+                    <select id="histTahun" class="w-24 text-xs px-2 py-1.5 border border-slate-200 rounded-lg bg-white outline-none focus:border-indigo-400">
+                        <?php 
+                        $curTahun = date('Y');
+                        for ($y = $curTahun; $y >= $curTahun - 3; $y--) {
+                            echo "<option value='$y'>$y</option>";
+                        }
+                        ?>
+                    </select>
+                    <button type="button" onclick="loadHistoryFilter()" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-xs font-semibold hover:bg-indigo-100">
+                        <i class="fa-solid fa-filter"></i>
+                    </button>
+                </div>
             </div>
             
             <!-- Body -->
-            <div class="p-0 max-h-[60vh] overflow-y-auto" id="historyContent">
+            <div class="p-0 overflow-y-auto flex-1 bg-white" id="historyContent">
                 <div class="p-6 text-center text-slate-400">
                     <i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2 text-indigo-500"></i>
                     <p class="text-xs">Memuat history...</p>
@@ -231,34 +336,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             <!-- Footer -->
             <div class="px-5 py-3 border-t border-slate-100 bg-slate-50/50 text-center">
-                <p class="text-[10px] text-slate-400">Menampilkan hingga 40 transaksi masuk & keluar terbaru.</p>
+                <p class="text-[10px] text-slate-400">Menampilkan transaksi bulan yang dipilih.</p>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-// Simple JS Search Filter
-document.getElementById('searchInput').addEventListener('keyup', function() {
-    let filter = this.value.toLowerCase();
-    let rows = document.querySelectorAll('.inv-row');
-    rows.forEach(row => {
-        if (row.getAttribute('data-search').includes(filter)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    });
-});
-
 // Modal History Logic
 const modalHistory = document.getElementById('modalHistory');
 const backdrop = document.getElementById('modalHistoryBackdrop');
 const panel = document.getElementById('modalHistoryPanel');
 const content = document.getElementById('historyContent');
 const title = document.getElementById('historyBarangName');
+let currentHistoryId = null;
 
 function showHistory(idBarang, namaBarang) {
+    currentHistoryId = idBarang;
     // Tampilkan modal
     modalHistory.classList.remove('hidden');
     // Animasi masuk
@@ -268,6 +362,18 @@ function showHistory(idBarang, namaBarang) {
     }, 10);
 
     title.innerText = namaBarang;
+    loadHistoryData();
+}
+
+function loadHistoryFilter() {
+    if (currentHistoryId) loadHistoryData();
+}
+
+function loadHistoryData() {
+    const idBarang = currentHistoryId;
+    const bulan = document.getElementById('histBulan').value;
+    const tahun = document.getElementById('histTahun').value;
+
     content.innerHTML = `
         <div class="p-6 text-center text-slate-400">
             <i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2 text-indigo-500"></i>
@@ -281,16 +387,14 @@ function showHistory(idBarang, namaBarang) {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
             'action': 'get_history',
-            'id_barang': idBarang
+            'id_barang': idBarang,
+            'bulan': bulan,
+            'tahun': tahun
         })
     })
-    .then(response => response.text())
-    .then(html => {
-        content.innerHTML = html;
-    })
-    .catch(err => {
-        content.innerHTML = `<div class='text-red-500 text-xs p-5 text-center'>Gagal memuat histori.</div>`;
-    });
+    .then(r => r.text())
+    .then(html => content.innerHTML = html)
+    .catch(() => content.innerHTML = '<div class="p-6 text-center text-red-500 text-xs">Gagal memuat history.</div>');
 }
 
 function closeHistory() {

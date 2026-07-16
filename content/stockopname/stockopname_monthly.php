@@ -1,6 +1,6 @@
 <?php
-if (!canDo('approvalso', 'view')) {
-    echo "<div class='p-4 text-rose-600 bg-rose-50 border border-rose-200 rounded-xl text-sm font-medium'>Anda tidak memiliki akses ke halaman Approval SO.</div>";
+if (!canDo('stockopname_monthly', 'view')) {
+    echo "<div class='p-4 text-rose-600 bg-rose-50 border border-rose-200 rounded-xl text-sm font-medium'>Anda tidak memiliki akses.</div>";
     exit;
 }
 
@@ -12,7 +12,7 @@ $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 25;
 $offset = ($page - 1) * $limit;
 
 $my_outlet_id = $_SESSION['outlet_id'] ?? null;
-$whereClauses = ["1=1"];
+$whereClauses = ["1=1", "so.periode_bulan IS NOT NULL"];
 $params = [];
 
 if ($my_outlet_id) {
@@ -23,13 +23,6 @@ if ($my_outlet_id) {
         $whereClauses[] = "so.id_outlet = ?";
         $params[] = $_GET['outlet'];
     }
-}
-
-// Default filter showing Pending at the top or filtering by status
-$statusFilter = $_GET['status'] ?? 'Pending';
-if ($statusFilter !== 'all') {
-    $whereClauses[] = "so.status_approval = ?";
-    $params[] = $statusFilter;
 }
 
 if ($search) {
@@ -43,7 +36,7 @@ if ($search) {
 $whereSql = implode(" AND ", $whereClauses);
 
 try {
-    // Count distinct SO sheets
+    // Count distinct grouped SOs
     $countQuery = "
         SELECT COUNT(DISTINCT so.no_so) 
         FROM stock_opname so
@@ -56,7 +49,7 @@ try {
     $totalData = $stmtCount->fetchColumn();
     $totalPages = ceil($totalData / $limit);
 
-    // Fetch SO sheets
+    // Fetch grouped SO lists
     $query = "
         SELECT so.no_so,
                MAX(so.id_so) as max_id_so,
@@ -64,6 +57,7 @@ try {
                so.periode_bulan,
                so.periode_tahun,
                so.status_approval,
+               so.catatan_reject,
                o.nama_outlet,
                u.nama as nama_user,
                COUNT(DISTINCT so.id_barang) as total_item,
@@ -73,8 +67,8 @@ try {
         JOIN outlet o ON so.id_outlet = o.id_outlet
         LEFT JOIN users u ON so.id_user = u.id_user
         WHERE $whereSql
-        GROUP BY so.no_so, so.tanggal, so.periode_bulan, so.periode_tahun, so.status_approval, o.nama_outlet, u.nama
-        ORDER BY so.status_approval DESC, so.tanggal DESC, max_id_so DESC
+        GROUP BY so.no_so, so.tanggal, so.periode_bulan, so.periode_tahun, so.status_approval, so.catatan_reject, o.nama_outlet, u.nama
+        ORDER BY so.periode_tahun DESC, so.periode_bulan DESC, max_id_so DESC
         LIMIT $limit OFFSET $offset
     ";
     $stmt = $conn->prepare($query);
@@ -87,9 +81,9 @@ try {
 }
 
 $bulanNama = [
-    1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr',
-    5 => 'Mei', 6 => 'Jun', 7 => 'Jul', 8 => 'Agu',
-    9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des'
+    1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+    5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+    9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
 ];
 ?>
 
@@ -98,9 +92,16 @@ $bulanNama = [
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Persetujuan Stock Opname (Approval)</h1>
-            <p class="text-slate-500 text-sm mt-1">Lakukan verifikasi, approval, atau penolakan pengajuan stock opname harian outlet.</p>
+            <h1 class="text-2xl font-bold text-slate-800">Stock Opname Bulanan</h1>
+            <p class="text-slate-500 text-sm mt-1">Kelola dan input perhitungan stok fisik bulanan di outlet.</p>
         </div>
+        <?php if (canDo('stockopname_monthly', 'create')): ?>
+        <div class="flex gap-2">
+            <a href="<?= $sistem ?>/stockopname_monthly/i" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm">
+                <i class="fa-solid fa-calendar-check"></i> Input Stok Bulanan
+            </a>
+        </div>
+        <?php endif; ?>
     </div>
     
     <?php if (!empty($_SESSION['flash_success'])): ?>
@@ -123,7 +124,7 @@ if (!$my_outlet_id) {
     <!-- Filters -->
     <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3">
         <form id="filterForm" method="GET" class="flex flex-col sm:flex-row w-full gap-3">
-            <input type="hidden" name="menu" value="approvalso">
+            <input type="hidden" name="menu" value="stockopname_monthly">
             <input type="hidden" name="page" value="1">
             <input type="hidden" name="limit" value="<?= $limit ?>">
             <div class="relative flex-1">
@@ -132,14 +133,6 @@ if (!$my_outlet_id) {
                        class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all">
             </div>
             
-            <!-- Filter Status -->
-            <select name="status" class="px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white" onchange="document.getElementById('filterForm').submit()">
-                <option value="Pending" <?= $statusFilter === 'Pending' ? 'selected' : '' ?>>Menunggu Approval (Pending)</option>
-                <option value="Approved" <?= $statusFilter === 'Approved' ? 'selected' : '' ?>>Approved</option>
-                <option value="Rejected" <?= $statusFilter === 'Rejected' ? 'selected' : '' ?>>Rejected</option>
-                <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>Semua Status</option>
-            </select>
-
             <?php if (!$my_outlet_id && !empty($outlets)): ?>
             <select name="outlet" class="px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white" onchange="document.getElementById('filterForm').submit()">
                 <option value="">Semua Outlet</option>
@@ -154,8 +147,8 @@ if (!$my_outlet_id) {
             <button type="submit" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-5 py-2 rounded-xl text-sm font-semibold transition-colors border border-indigo-200 whitespace-nowrap">
                 Cari
             </button>
-            <?php if($search || !empty($_GET['outlet']) || $statusFilter !== 'Pending'): ?>
-            <a href="<?= $sistem ?>/approvalso" class="bg-slate-100 text-slate-600 hover:bg-slate-200 px-5 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap">
+            <?php if($search || !empty($_GET['outlet'])): ?>
+            <a href="<?= $sistem ?>/stockopname_monthly" class="bg-slate-100 text-slate-600 hover:bg-slate-200 px-5 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap">
                 Reset
             </a>
             <?php endif; ?>
@@ -166,21 +159,21 @@ if (!$my_outlet_id) {
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <!-- Show Entries Header -->
         <div class="flex items-center justify-end px-6 py-3.5 border-b border-slate-100 bg-slate-50/20">
-            <?php echo generateShowEntries($limit, 'approvalso', $search); ?>
+            <?php echo generateShowEntries($limit, 'stockopname_monthly', $search); ?>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm whitespace-nowrap">
                 <thead class="bg-slate-50 border-b border-slate-200">
                     <tr>
                         <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider w-10 text-center">No</th>
-                        <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Tanggal</th>
+                        <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Periode SO</th>
                         <?php if(!$my_outlet_id): ?>
                         <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Outlet</th>
                         <?php endif; ?>
                         <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Nomor SO</th>
                         <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-center">Total Item</th>
                         <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-center">Status</th>
-                        <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Staff Pengaju</th>
+                        <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Staff / Operator</th>
                         <th class="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-center w-24">Aksi</th>
                     </tr>
                 </thead>
@@ -189,10 +182,10 @@ if (!$my_outlet_id) {
                     <tr>
                         <td colspan="<?= $my_outlet_id ? '7' : '8' ?>" class="px-6 py-12 text-center">
                             <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                                <i class="fa-solid fa-check-double text-2xl text-slate-400"></i>
+                                <i class="fa-solid fa-calendar-check text-2xl text-slate-400"></i>
                             </div>
-                            <h3 class="text-slate-800 font-bold mb-1">Tidak Ada Data Pending</h3>
-                            <p class="text-slate-500 text-sm">Semua pengajuan stock opname telah ditinjau.</p>
+                            <h3 class="text-slate-800 font-bold mb-1">Belum Ada Data Stock Opname Bulanan</h3>
+                            <p class="text-slate-500 text-sm">Catatan perhitungan stock opname bulanan akan tampil di sini.</p>
                         </td>
                     </tr>
                     <?php else: ?>
@@ -208,13 +201,10 @@ if (!$my_outlet_id) {
                             <td class="px-6 py-4 text-center text-slate-400 font-medium"><?= $no++ ?></td>
                             
                             <td class="px-6 py-4">
-                                <?php if (!empty($row['periode_bulan'])): ?>
-                                    <span class="font-bold text-slate-800"><?= $bulanNama[(int)$row['periode_bulan']] ?? 'Bulan' ?> <?= $row['periode_tahun'] ?></span>
-                                    <p class="text-[9px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">SO Bulanan</p>
-                                <?php else: ?>
-                                    <span class="font-semibold text-slate-700"><?= date('d M Y', strtotime($row['tanggal'])) ?></span>
-                                    <p class="text-[9px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">SO Harian</p>
-                                <?php endif; ?>
+                                <span class="font-bold text-slate-800">
+                                    <?= $bulanNama[(int)$row['periode_bulan']] ?? 'Bulan ?' ?> <?= $row['periode_tahun'] ?>
+                                </span>
+                                <p class="text-[10px] text-slate-400 font-semibold mt-0.5">Tgl: <?= date('d M Y', strtotime($row['tanggal'])) ?></p>
                             </td>
 
                             <?php if(!$my_outlet_id): ?>
@@ -248,17 +238,28 @@ if (!$my_outlet_id) {
                             </td>
 
                             <td class="px-6 py-4 text-center">
-                                <?php if ($status === 'Pending' && canDo('approvalso', 'edit')): ?>
-                                <button type="button" onclick="openLgModal('<?= $sistem ?>/approvalso/v/<?= $row['no_so'] ?>')"
-                                   class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3.5 py-1.5 rounded-lg font-bold transition-all shadow-sm flex items-center gap-1 mx-auto">
-                                    <i class="fa-solid fa-signature"></i> Tinjau & Proses
-                                </button>
-                                <?php else: ?>
-                                <button type="button" onclick="openLgModal('<?= $sistem ?>/stockopname/v/<?= $row['no_so'] ?>')"
-                                   class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-100 transition-colors border border-sky-100 mx-auto" title="Lihat Detail">
-                                    <i class="fa-solid fa-circle-info text-xs"></i>
-                                </button>
-                                <?php endif; ?>
+                                <div class="flex items-center justify-center gap-2">
+                                    <?php if (canDo('stockopname_monthly', 'view')): ?>
+                                    <button type="button" onclick="openLgModal('<?= $sistem ?>/stockopname_monthly/v/<?= $row['no_so'] ?>')"
+                                       class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-100 transition-colors border border-sky-100" title="Detail Stock Opname">
+                                        <i class="fa-solid fa-circle-info text-xs"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($status === 'Rejected' && canDo('stockopname_monthly', 'edit')): ?>
+                                    <a href="<?= $sistem ?>/stockopname_monthly/e/<?= $row['no_so'] ?>"
+                                       class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center hover:bg-amber-100 transition-colors border border-amber-100" title="Revisi / Edit Data">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </a>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($status === 'Pending' && canDo('stockopname_monthly', 'delete')): ?>
+                                    <button onclick="cancelSO('<?= $row['no_so'] ?>')"
+                                            class="w-8 h-8 rounded-lg bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 flex items-center justify-center transition-colors" title="Hapus Stock Opname">
+                                        <i class="fa-solid fa-trash text-xs"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -277,7 +278,7 @@ if (!$my_outlet_id) {
             </div>
             
             <div class="flex items-center gap-1">
-                <button type="button" onclick="goToPage(<?= max(1, $page - 1) ?>, <?= $limit ?>, 'approvalso', '<?= urlencode($search) ?>')"
+                <button type="button" onclick="goToPage(<?= max(1, $page - 1) ?>, <?= $limit ?>, 'stockopname_monthly', '<?= urlencode($search) ?>')"
                         class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors <?= $page <= 1 ? 'opacity-50 cursor-not-allowed' : '' ?>"
                         <?= $page <= 1 ? 'disabled' : '' ?>>
                     <i class="fa-solid fa-chevron-left text-xs"></i>
@@ -291,13 +292,13 @@ if (!$my_outlet_id) {
                         if ($i == $page) {
                             echo '<button type="button" class="w-8 h-8 rounded-lg text-sm font-bold bg-indigo-600 text-white">'.$i.'</button>';
                         } else {
-                            echo '<button type="button" onclick="goToPage('.$i.', '.$limit.', \'approvalso\', \''.urlencode($search).'\')" class="w-8 h-8 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors">'.$i.'</button>';
+                            echo '<button type="button" onclick="goToPage('.$i.', '.$limit.', \'stockopname_monthly\', \''.urlencode($search).'\')" class="w-8 h-8 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors">'.$i.'</button>';
                         }
                     }
                     ?>
                 </div>
 
-                <button type="button" onclick="goToPage(<?= min($totalPages, $page + 1) ?>, <?= $limit ?>, 'approvalso', '<?= urlencode($search) ?>')"
+                <button type="button" onclick="goToPage(<?= min($totalPages, $page + 1) ?>, <?= $limit ?>, 'stockopname_monthly', '<?= urlencode($search) ?>')"
                         class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors <?= $page >= $totalPages ? 'opacity-50 cursor-not-allowed' : '' ?>"
                         <?= $page >= $totalPages ? 'disabled' : '' ?>>
                     <i class="fa-solid fa-chevron-right text-xs"></i>
@@ -307,3 +308,37 @@ if (!$my_outlet_id) {
         <?php endif; ?>
     </div>
 </div>
+
+<script>
+function cancelSO(noSO) {
+    Swal.fire({
+        title: 'Hapus Pengajuan SO Bulanan?',
+        html: `Apakah Anda yakin ingin menghapus lembar stock opname bulanan <b>${noSO}</b>?<br><span class="text-xs text-rose-500 font-semibold">*Data pengajuan ini akan dihapus permanen.</span>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: 'Ya, Hapus!',
+        cancelButtonText: 'Batal'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        
+        Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const fd = new FormData();
+        fd.append('action', 'delete_so');
+        fd.append('no_so', noSO);
+        
+        fetch('<?= $sistem ?>/stockopname_monthly/v/' + noSO, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    Swal.fire({ icon: 'success', title: 'Berhasil!', text: res.msg, timer: 1500, showConfirmButton: false })
+                        .then(() => location.reload());
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Gagal!', text: res.msg });
+                }
+            })
+            .catch(() => Swal.fire({ icon: 'error', title: 'Error!', text: 'Koneksi gagal atau sesi habis.' }));
+    });
+}
+</script>

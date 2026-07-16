@@ -11,13 +11,15 @@ switch ($menu) {
     case 'barang':      require_once('content/barang/barang.php'); break;
     case 'ibarang':     require_once('content/barang/input.php');  break;
     case 'ebarang':     require_once('content/barang/edit.php');   break;
-    
+    case 'vbarang':     require_once('content/barang/view.php');   break;
+
+    // ── CETAK BARCODE ──────────────────────────────
+    case 'cetakbarcode':  require_once('content/cetakbarcode/cetakbarcode.php'); break;
+    case 'pcetakbarcode': require_once('content/cetakbarcode/print.php'); break;
+
     // ── INVENTORY ──────────────────────────────────
     case 'inventory':    require_once('content/inventory/inventory.php'); break;
     case 'einventory':   require_once('content/inventory/edit.php');      break;
-
-    case 'vbarang':     require_once('content/barang/view.php');   break;
-
     // ── SUPPLIER ───────────────────────────────────
     case 'supplier':    require_once('content/supplier/supplier.php'); break;
     case 'isupplier':   require_once('content/supplier/input.php');    break;
@@ -52,12 +54,19 @@ switch ($menu) {
 
     // ── STOK OUTLET ────────────────────────────────
     case 'stokoutlet': require_once('content/stokoutlet/stokoutlet.php'); break;
+    case 'vstokoutlet': require_once('content/stokoutlet/view.php'); break;
 
     // ── STOCK OPNAME (Staff) ───────────────────────
     case 'stockopname':  require_once('content/stockopname/stockopname.php'); break;
     case 'istockopname': require_once('content/stockopname/input.php');       break;
     case 'estockopname': require_once('content/stockopname/edit.php');        break;
     case 'vstockopname': require_once('content/stockopname/view.php');        break;
+
+    // ── STOCK OPNAME BULANAN (Staff) ───────────────
+    case 'stockopname_monthly':  require_once('content/stockopname/stockopname_monthly.php'); break;
+    case 'istockopname_monthly': require_once('content/stockopname/input_monthly.php');       break;
+    case 'estockopname_monthly': require_once('content/stockopname/edit.php');                break;
+    case 'vstockopname_monthly': require_once('content/stockopname/view.php');                break;
 
     // ── APPROVAL STOCK OPNAME (SPV) ────────────────
     case 'approvalso':  require_once('content/approvalso/approvalso.php'); break;
@@ -82,9 +91,6 @@ switch ($menu) {
 
     // ── HAK AKSES ──────────────────────────────────
     case 'hakakses': require_once('content/hakakses/hakakses.php'); break;
-
-    // ── SCANNER ────────────────────────────────────
-    case 'scanner': require_once('content/scanner/scanner.php'); break;
 
     // ── ACCOUNT ────────────────────────────────────
     case 'account': require_once('content/account/account.php'); break;

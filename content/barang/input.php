@@ -21,79 +21,112 @@ try {
 }
 
 $error = '';
+$errors = [];
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $barcode     = trim($_POST['barcode'] ?? '');
-    $nama_barang = trim($_POST['nama_barang'] ?? '');
-    $kategori    = trim($_POST['kategori'] ?? '');
-    $satuan      = trim($_POST['satuan'] ?? '');
-    $min_stok    = (int)($_POST['min_stok'] ?? 0);
-    $id_supplier = (int)($_POST['id_supplier'] ?? 0) ?: null;
-    $id_tipe     = (int)($_POST['id_tipe'] ?? 0) ?: null;
+    $barcodes      = $_POST['barcode'] ?? [];
+    $nama_barangs  = $_POST['nama_barang'] ?? [];
+    $kategoris     = $_POST['kategori'] ?? [];
+    $satuans       = $_POST['satuan'] ?? [];
+    $min_stoks     = $_POST['min_stok'] ?? [];
+    $id_tipes      = $_POST['id_tipe'] ?? [];
 
-    if (!$nama_barang) {
-        $error = 'Nama Barang wajib diisi.';
+    if (empty($nama_barangs)) {
+        $error = 'Minimal satu barang harus diinput.';
     } else {
+        $conn->beginTransaction();
         try {
-            // Cek jika barcode diisi, apakah sudah ada yang sama
-            $duplikat = false;
-            if ($barcode) {
-                $cek = $conn->prepare("SELECT nama_barang FROM barang WHERE barcode = ?");
-                $cek->execute([$barcode]);
-                $exBarang = $cek->fetchColumn();
-                if ($exBarang) {
-                    $duplikat = true;
-                    $error = "Barcode <b>$barcode</b> sudah digunakan oleh barang: <b>$exBarang</b>";
+            $stmt = $conn->prepare("
+                INSERT INTO barang (barcode, nama_barang, kategori, satuan, min_stok, id_tipe, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            ");
+            
+            $addedCount = 0;
+            
+            foreach ($nama_barangs as $index => $nama) {
+                $nama = trim($nama);
+                if (!$nama) continue; // Skip empty rows
+                
+                $barcode = trim($barcodes[$index] ?? '');
+                $kategori = trim($kategoris[$index] ?? 'Lainnya');
+                $satuan = trim($satuans[$index] ?? 'Pcs');
+                $min_stok = (int)($min_stoks[$index] ?? 0);
+                $id_tipe = (int)($id_tipes[$index] ?? 0) ?: null;
+                
+                if (!$id_tipe) {
+                    $errors[] = "Barang '$nama' gagal ditambahkan: Tipe Barang wajib dipilih.";
+                    continue;
                 }
-            }
 
-            if (!$duplikat) {
-                $stmt = $conn->prepare("
-                    INSERT INTO barang (barcode, nama_barang, kategori, satuan, stok, min_stok, id_supplier, id_tipe, is_active)
-                    VALUES (?, ?, ?, ?, 0, ?, ?, ?, 1)
-                ");
+                // Cek duplikat barcode
+                if ($barcode) {
+                    $cek = $conn->prepare("SELECT nama_barang FROM barang WHERE barcode = ?");
+                    $cek->execute([$barcode]);
+                    $exBarang = $cek->fetchColumn();
+                    if ($exBarang) {
+                        $errors[] = "Barcode <b>$barcode</b> gagal: Sudah digunakan oleh barang <b>$exBarang</b>";
+                        continue;
+                    }
+                }
+
                 $stmt->execute([
                     $barcode ?: null,
-                    $nama_barang,
-                    $kategori ?: 'Lainnya',
-                    $satuan ?: 'Pcs',
+                    $nama,
+                    $kategori,
+                    $satuan,
                     $min_stok,
-                    $id_supplier,
                     $id_tipe
                 ]);
                 
                 $new_id = (int)$conn->lastInsertId();
-
-                // Daftarkan ke tabel inventory
                 $conn->exec("INSERT IGNORE INTO inventory (id_barang, stok) VALUES ($new_id, 0)");
-
-                writeAuditLog('CREATE', 'barang', $new_id, "Menambahkan barang baru: $nama_barang (Barcode: " . ($barcode ?: '-') . ")");
+                writeAuditLog('CREATE', 'barang', $new_id, "Menambahkan barang baru: $nama (Barcode: " . ($barcode ?: '-') . ")");
                 
-                $_SESSION['flash_success'] = "Barang <b>$nama_barang</b> berhasil ditambahkan.";
+                $addedCount++;
+            }
+
+            if ($addedCount > 0) {
+                $conn->commit();
+                $_SESSION['flash_success'] = "Berhasil menambahkan <b>$addedCount</b> barang baru ke Master Data.";
+                if (!empty($errors)) {
+                    $_SESSION['flash_success'] .= " (Beberapa baris dilewati karena error)";
+                }
                 echo "<script>window.location.href='$sistem/barang';</script>";
                 exit;
+            } else {
+                $conn->rollBack();
+                $error = 'Tidak ada barang yang berhasil ditambahkan. Silakan cek error di bawah.';
             }
         } catch (Exception $e) {
+            $conn->rollBack();
             $error = 'Gagal menyimpan data: ' . $e->getMessage();
         }
     }
 }
 ?>
 
-<!-- Load HTML5-QRCode Library untuk mobile scanning -->
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<style>
+/* Animasi slide untuk baris baru */
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.new-row { animation: slideDown 0.3s ease-out forwards; }
+</style>
 
-<div class="fade-up max-w-2xl mx-auto space-y-5">
+<div class="fade-up max-w-7xl mx-auto space-y-5">
 
     <!-- Header -->
-    <div class="flex items-center gap-3">
-        <a href="<?= $sistem ?>/barang" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors text-slate-500">
-            <i class="fa-solid fa-arrow-left text-sm"></i>
-        </a>
-        <div>
-            <h1 class="text-xl font-bold text-slate-800">Tambah Barang</h1>
-            <p class="text-slate-500 text-sm">Daftarkan item barang baru ke dalam sistem.</p>
+    <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+            <a href="<?= $sistem ?>/barang" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors text-slate-500">
+                <i class="fa-solid fa-arrow-left text-sm"></i>
+            </a>
+            <div>
+                <h1 class="text-xl font-bold text-slate-800">Tambah Master Barang</h1>
+                <p class="text-slate-500 text-sm">Daftarkan banyak item sekaligus ke dalam sistem.</p>
+            </div>
         </div>
     </div>
 
@@ -104,114 +137,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span><?= $error ?></span>
     </div>
     <?php endif; ?>
+    <?php if (!empty($errors)): ?>
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm space-y-1">
+        <p class="font-bold flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> Ditemukan kesalahan:</p>
+        <?php foreach ($errors as $e): ?>
+            <p class="pl-4">• <?= $e ?></p>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
 
-    <!-- Form Card -->
-    <form method="POST" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <!-- Form Container -->
+    <form method="POST" id="formBarangMulti" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
         <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <p class="text-sm font-semibold text-slate-700">
-                <i class="fa-solid fa-box text-sky-500 mr-2"></i>Informasi Barang
+                <i class="fa-solid fa-table-list text-sky-500 mr-2"></i>Daftar Item Baru
             </p>
-            <span class="text-[10px] bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded border border-sky-100">Gudang Pusat</span>
+            <div class="flex gap-2">
+                <button type="button" onclick="startScanner()"
+                        class="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+                    <i class="fa-solid fa-camera"></i> Barcode Scanner
+                </button>
+                <button type="button" onclick="addRow()"
+                        class="inline-flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+                    <i class="fa-solid fa-plus"></i> Tambah Baris
+                </button>
+            </div>
+        </div>
+
+        <!-- Kamera Scanner Box (Tersembunyi) -->
+        <div id="scannerBox" class="hidden bg-slate-800 text-white p-4 text-center space-y-3 relative overflow-hidden">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-camera mr-1"></i> Scanner Aktif</span>
+                <button type="button" onclick="stopScanner()" class="text-xs text-rose-400 hover:text-rose-300 font-semibold">Tutup Kamera</button>
+            </div>
+            <div id="interactiveReader" class="w-full max-w-sm mx-auto overflow-hidden rounded-xl bg-black"></div>
+            <p class="text-[10px] text-slate-400">Posisikan barcode produk tepat di kotak. Hasil scan akan mengisi baris aktif (yg disorot kuning).</p>
         </div>
         
-        <div class="p-6 space-y-5">
-
-            <!-- Barcode & Scanner -->
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Barcode / Kode EAN</label>
-                <div class="flex gap-2">
-                    <div class="relative flex-1">
-                        <i class="fa-solid fa-barcode absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input type="text" name="barcode" id="barcodeInput" value="<?= htmlspecialchars($_POST['barcode'] ?? '') ?>"
-                               placeholder="Scan barcode kemasan atau isi manual..."
-                               class="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all">
-                    </div>
-                    <button type="button" onclick="startScanner()"
-                            class="inline-flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
-                        <i class="fa-solid fa-qrcode"></i> Scan Kamera
-                    </button>
-                </div>
-                <p class="text-[10px] text-slate-400 mt-1">Arahkan kamera ke barcode garis produk rumah tangga untuk memindai otomatis.</p>
-            </div>
-
-            <!-- Kamera Scanner Box (Tersembunyi) -->
-            <div id="scannerBox" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center space-y-3 relative overflow-hidden">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider"><i class="fa-solid fa-camera mr-1"></i> Scanner Aktif</span>
-                    <button type="button" onclick="stopScanner()" class="text-xs text-red-500 hover:text-red-700 font-semibold">Tutup Kamera</button>
-                </div>
-                <div id="interactiveReader" class="w-full max-w-sm mx-auto overflow-hidden rounded-xl border border-slate-200 shadow-inner"></div>
-                <p class="text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Posisikan barcode produk tepat di tengah kotak pemindai.</p>
-            </div>
-
-            <!-- Nama Barang -->
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Nama Barang <span class="text-red-500">*</span></label>
-                <input type="text" name="nama_barang" value="<?= htmlspecialchars($_POST['nama_barang'] ?? '') ?>" required
-                       placeholder="Contoh: Sunlight Jeruk Nipis 700ml"
-                       class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all">
-            </div>
-
-            <!-- Tipe Barang -->
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tipe Barang (Sifat Stok) <span class="text-red-500">*</span></label>
-                <select name="id_tipe" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-                    <option value="">— Pilih Tipe Barang —</option>
-                    <?php foreach ($tipe_barang_list as $t): ?>
-                    <option value="<?= $t['id_tipe'] ?>" <?= (($_POST['id_tipe'] ?? '') == $t['id_tipe']) ? 'selected' : '' ?>>
-                        <?= sanitize($t['nama_tipe']) ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <!-- Kategori & Satuan -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Kategori</label>
-                    <select name="kategori" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-                        <option value="Alat Rumah Tangga" <?= ($_POST['kategori'] ?? '') == 'Alat Rumah Tangga' ? 'selected' : '' ?>>Alat Rumah Tangga</option>
-                        <option value="Bahan Baku Makanan" <?= ($_POST['kategori'] ?? '') == 'Bahan Baku Makanan' ? 'selected' : '' ?>>Bahan Baku Makanan</option>
-                        <option value="Bahan Minuman" <?= ($_POST['kategori'] ?? '') == 'Bahan Minuman' ? 'selected' : '' ?>>Bahan Minuman</option>
-                        <option value="Kimia & Pembersih" <?= ($_POST['kategori'] ?? '') == 'Kimia & Pembersih' ? 'selected' : '' ?>>Kimia & Pembersih</option>
-                        <option value="Peralatan Makan" <?= ($_POST['kategori'] ?? '') == 'Peralatan Makan' ? 'selected' : '' ?>>Peralatan Makan</option>
-                        <option value="Lainnya" <?= ($_POST['kategori'] ?? '') == 'Lainnya' ? 'selected' : '' ?>>Lainnya</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Satuan</label>
-                    <select name="satuan" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-                        <option value="Pcs" <?= ($_POST['satuan'] ?? '') == 'Pcs' ? 'selected' : '' ?>>Pcs (Pcs / Biji)</option>
-                        <option value="Botol" <?= ($_POST['satuan'] ?? '') == 'Botol' ? 'selected' : '' ?>>Botol</option>
-                        <option value="Pack" <?= ($_POST['satuan'] ?? '') == 'Pack' ? 'selected' : '' ?>>Pack</option>
-                        <option value="Pouch" <?= ($_POST['satuan'] ?? '') == 'Pouch' ? 'selected' : '' ?>>Pouch</option>
-                        <option value="Karton" <?= ($_POST['satuan'] ?? '') == 'Karton' ? 'selected' : '' ?>>Karton (Dus)</option>
-                        <option value="Liter" <?= ($_POST['satuan'] ?? '') == 'Liter' ? 'selected' : '' ?>>Liter</option>
-                        <option value="Kg" <?= ($_POST['satuan'] ?? '') == 'Kg' ? 'selected' : '' ?>>Kilogram (Kg)</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Batas Minimum Stok -->
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Batas Minimum Stok (Alert)</label>
-                <input type="number" name="min_stok" min="0" value="<?= htmlspecialchars($_POST['min_stok'] ?? '5') ?>"
-                       class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all">
-            </div>
-
-            <!-- Supplier -->
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Supplier Utama (Opsional)</label>
-                <select name="id_supplier" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-                    <option value="">— Tidak Ada Supplier —</option>
-                    <?php foreach ($suppliers as $s): ?>
-                    <option value="<?= $s['id_supplier'] ?>" <?= (($_POST['id_supplier'] ?? '') == $s['id_supplier']) ? 'selected' : '' ?>>
-                        <?= sanitize($s['nama_supplier']) ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
+        <div class="flex-1 p-0 overflow-x-auto">
+            <table class="w-full text-left whitespace-nowrap" id="tblItems">
+                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                    <tr>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-10 text-center">No</th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-48">Barcode</th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider min-w-[200px]">Nama Barang <span class="text-red-500">*</span></th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-40">Tipe <span class="text-red-500">*</span></th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-36">Kategori</th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Satuan</th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Min Stok</th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-10 text-center"><i class="fa-solid fa-trash"></i></th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyItems" class="divide-y divide-slate-100">
+                    <!-- Rows will be injected here by JS -->
+                </tbody>
+            </table>
         </div>
 
         <!-- Footer Buttons -->
@@ -222,20 +202,137 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </a>
             <button type="submit"
                     class="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm">
-                <i class="fa-solid fa-floppy-disk text-xs"></i> Simpan Barang
+                <i class="fa-solid fa-floppy-disk text-xs"></i> Simpan Semua Barang
             </button>
         </div>
     </form>
 </div>
 
+<!-- Load HTML5-QRCode Library untuk mobile scanning -->
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
 <script>
+const tbody = document.getElementById('tbodyItems');
+let rowCount = 0;
+let activeRowId = null; // Menandakan baris mana yg akan diisi barcode hasil scan
+
+// Opsi dropdown untuk diclone ke setiap baris
+const optsTipe = `
+    <option value="">- Tipe -</option>
+    <?php foreach ($tipe_barang_list as $t): ?>
+    <option value="<?= $t['id_tipe'] ?>"><?= sanitize($t['nama_tipe']) ?></option>
+    <?php endforeach; ?>
+`;
+
+const optsKategori = `
+    <option value="Alat Rumah Tangga">Alat Rumah Tangga</option>
+    <option value="Bahan Baku Makanan">Bahan Baku Makanan</option>
+    <option value="Bahan Minuman">Bahan Minuman</option>
+    <option value="Kimia & Pembersih">Kimia & Pembersih</option>
+    <option value="Peralatan Makan">Peralatan Makan</option>
+    <option value="Lainnya" selected>Lainnya</option>
+`;
+
+const optsSatuan = `
+    <option value="Pcs" selected>Pcs</option>
+    <option value="Botol">Botol</option>
+    <option value="Pack">Pack</option>
+    <option value="Pouch">Pouch</option>
+    <option value="Karton">Karton</option>
+    <option value="Liter">Liter</option>
+    <option value="Kg">Kg</option>
+`;
+
+function addRow() {
+    rowCount++;
+    const tr = document.createElement('tr');
+    tr.id = 'row_' + rowCount;
+    tr.className = 'new-row hover:bg-slate-50 transition-colors group cursor-pointer';
+    tr.onclick = function() { setActiveRow(tr.id); };
+    
+    tr.innerHTML = `
+        <td class="px-4 py-2 text-center text-xs font-medium text-slate-400 row-number">${rowCount}</td>
+        <td class="px-4 py-2">
+            <input type="text" name="barcode[]" id="barcode_${rowCount}" placeholder="Scan/Ketik..." 
+                   class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none">
+        </td>
+        <td class="px-4 py-2">
+            <input type="text" name="nama_barang[]" placeholder="Contoh: Sunlight Jeruk Nipis" required
+                   class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none">
+        </td>
+        <td class="px-4 py-2">
+            <select name="id_tipe[]" required class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none bg-white">
+                ${optsTipe}
+            </select>
+        </td>
+        <td class="px-4 py-2">
+            <select name="kategori[]" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none bg-white">
+                ${optsKategori}
+            </select>
+        </td>
+        <td class="px-4 py-2">
+            <select name="satuan[]" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none bg-white">
+                ${optsSatuan}
+            </select>
+        </td>
+        <td class="px-4 py-2">
+            <input type="number" name="min_stok[]" value="5" min="0"
+                   class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none">
+        </td>
+        <td class="px-4 py-2 text-center">
+            <button type="button" onclick="removeRow('${tr.id}')" class="text-slate-300 hover:text-red-500 transition-colors">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    setActiveRow(tr.id);
+    updateRowNumbers();
+}
+
+function removeRow(id) {
+    const row = document.getElementById(id);
+    if (row) row.remove();
+    updateRowNumbers();
+}
+
+function updateRowNumbers() {
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach((r, idx) => {
+        r.querySelector('.row-number').innerText = idx + 1;
+    });
+}
+
+function setActiveRow(id) {
+    // Hapus class aktif dari semua baris
+    document.querySelectorAll('#tbodyItems tr').forEach(r => {
+        r.classList.remove('bg-amber-50');
+        r.classList.add('hover:bg-slate-50');
+    });
+    // Set aktif
+    const row = document.getElementById(id);
+    if (row) {
+        row.classList.remove('hover:bg-slate-50');
+        row.classList.add('bg-amber-50');
+        activeRowId = id;
+    }
+}
+
+// Inisialisasi awal 3 baris
+document.addEventListener('DOMContentLoaded', () => {
+    addRow();
+    addRow();
+    addRow();
+    setActiveRow('row_1');
+});
+
+// ─── SCANNER LOGIC ───────────────────────────────────────────────────────────
 let html5QrcodeScanner = null;
 
 function startScanner() {
     const scannerBox = document.getElementById('scannerBox');
     scannerBox.classList.remove('hidden');
     
-    // Inisialisasi html5-qrcode dengan format decoder dibatasi agar pemindaian barcode 1D sangat cepat
     if (!html5QrcodeScanner) {
         html5QrcodeScanner = new Html5Qrcode("interactiveReader", {
             formatsToSupport: [
@@ -250,45 +347,34 @@ function startScanner() {
         });
     }
     
-    const config = { 
-        fps: 24, 
-        qrbox: { width: 300, height: 120 }, // Kotak lebar dan tipis khusus untuk barcode produk rumah tangga
-        aspectRatio: 1.777778
-    };
-    
     html5QrcodeScanner.start(
         { facingMode: "environment" }, 
-        config,
-        (decodedText, decodedResult) => {
-            document.getElementById('barcodeInput').value = decodedText;
-            stopScanner();
+        { fps: 24, qrbox: { width: 300, height: 120 }, aspectRatio: 1.777778 },
+        (decodedText) => {
+            // Masukkan barcode ke input row yang aktif
+            if (activeRowId) {
+                const inputBarcode = document.querySelector('#' + activeRowId + ' input[name="barcode[]"]');
+                if (inputBarcode) {
+                    inputBarcode.value = decodedText;
+                    // Auto-fokus ke nama barang
+                    const inputNama = document.querySelector('#' + activeRowId + ' input[name="nama_barang[]"]');
+                    if (inputNama) inputNama.focus();
+                }
+            }
             
             Swal.fire({
-                icon: 'success',
-                title: 'Barcode Terbaca!',
-                text: decodedText,
-                timer: 1500,
-                showConfirmButton: false,
-                position: 'top-end',
-                toast: true
+                icon: 'success', title: 'Barcode: ' + decodedText, timer: 1000,
+                showConfirmButton: false, position: 'top-end', toast: true
             });
+            // Auto stop setelah baca jika dimau, tapi biar bisa lanjut scan jangan distop
         },
-        (errorMessage) => {
-            // Abaikan kegagalan baca per frame agar performa lancar
-        }
+        () => {}
     ).catch(err => {
         let errorMsg = 'Izin kamera ditolak atau kamera tidak ditemukan.';
-        
-        // Pengecekan HTTPS / Secure Context
         if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-            errorMsg = 'Kamera tidak dapat diakses karena browser memblokir koneksi HTTP tidak aman (Non-HTTPS). Silakan akses melalui HTTPS atau gunakan localhost.';
+            errorMsg = 'Kamera memblokir koneksi non-HTTPS.';
         }
-        
-        Swal.fire({
-            icon: 'error',
-            title: 'Kamera Gagal',
-            html: errorMsg
-        });
+        Swal.fire({ icon: 'error', title: 'Kamera Gagal', html: errorMsg });
         scannerBox.classList.add('hidden');
     });
 }

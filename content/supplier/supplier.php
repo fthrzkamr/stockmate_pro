@@ -45,9 +45,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Ambil data semua supplier
+// Pagination parameters
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$limit = isset($_GET['limit']) ? max(10, min(100, (int)$_GET['limit'])) : 25;
+$offset = ($page - 1) * $limit;
+
+// Hitung total data untuk pagination
 try {
-    $suppliers = $conn->query("SELECT * FROM supplier ORDER BY nama_supplier ASC")->fetchAll();
+    $totalData = (int)$conn->query("SELECT COUNT(*) FROM supplier")->fetchColumn();
+} catch (Exception $e) {
+    $totalData = 0;
+}
+
+// Ambil data supplier dengan pagination
+try {
+    $suppliers = $conn->query("SELECT * FROM supplier ORDER BY nama_supplier ASC LIMIT $limit OFFSET $offset")->fetchAll();
 } catch (Exception $e) {
     $suppliers = [];
 }
@@ -82,12 +94,13 @@ try {
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         
         <!-- Search and Filter Bar -->
-        <div class="flex items-center px-5 py-4 border-b border-slate-100 bg-slate-50/20">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/20 gap-3">
             <div class="relative flex-1 max-w-sm">
                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                 <input id="searchSupplier" type="text" placeholder="Cari nama, alamat, atau telepon..."
                        class="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
             </div>
+            <?php echo generateShowEntries($limit, 'supplier'); ?>
         </div>
 
         <div class="overflow-x-auto">
@@ -111,7 +124,7 @@ try {
                         </td>
                     </tr>
                     <?php else: ?>
-                    <?php $no = 1; foreach ($suppliers as $s): ?>
+                    <?php $no = $offset + 1; foreach ($suppliers as $s): ?>
                     <tr class="hover:bg-slate-50/50 transition-colors supplier-row" 
                         data-search="<?= strtolower($s['nama_supplier'].' '.$s['alamat'].' '.$s['telepon']) ?>">
                         
@@ -174,6 +187,9 @@ try {
                 </tbody>
             </table>
         </div>
+        
+        <!-- Pagination -->
+        <?php echo generatePagination($totalData, $limit, $sistem . '/supplier', $page, 'supplier', ''); ?>
     </div>
 </div>
 
