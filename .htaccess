@@ -63,6 +63,14 @@
     RewriteRule ^barangkeluar/v/(.*)$       sistem.php?menu=vbarangkeluar&keycode=$1 [QSA,L]
 
     # ==============================
+    # RETUR SUPPLIER
+    # ==============================
+    RewriteRule ^retursupplier$              sistem.php?menu=retursupplier [QSA,L]
+    RewriteRule ^retursupplier/cari=(.*)$    sistem.php?menu=retursupplier&cari=$1 [L]
+    RewriteRule ^retursupplier/i$            sistem.php?menu=iretursupplier [QSA,L]
+    RewriteRule ^retursupplier/v/(.*)$       sistem.php?menu=vretursupplier&keycode=$1 [QSA,L]
+
+    # ==============================
     # TERIMA BARANG (Stock Keeper)
     # ==============================
     RewriteRule ^terimabarang$              sistem.php?menu=terimabarang [QSA,L]

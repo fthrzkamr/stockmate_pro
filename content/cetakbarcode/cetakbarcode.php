@@ -22,9 +22,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     try {
-        // Generate a new barcode: PRD- + 6 digit ID (padded) + 2 random letters for uniqueness
-        $random = strtoupper(substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 2));
-        $newBarcode = 'PRD-' . str_pad($id_barang, 5, '0', STR_PAD_LEFT) . $random;
+        // Generate a new barcode: 15 digit random numbers
+        $newBarcode = '';
+        for ($i = 0; $i < 15; $i++) {
+            $newBarcode .= mt_rand(0, 9);
+        }
 
         $stmt = $conn->prepare("UPDATE barang SET barcode = ? WHERE id_barang = ?");
         $stmt->execute([$newBarcode, $id_barang]);

@@ -32,6 +32,13 @@ if ($statusFilter !== 'all') {
     $params[] = $statusFilter;
 }
 
+$tipeSOFilter = $_GET['tipe_so'] ?? 'all';
+if ($tipeSOFilter === 'harian') {
+    $whereClauses[] = "(so.periode_bulan IS NULL OR so.periode_bulan = 0)";
+} elseif ($tipeSOFilter === 'bulanan') {
+    $whereClauses[] = "so.periode_bulan IS NOT NULL AND so.periode_bulan > 0";
+}
+
 if ($search) {
     $whereClauses[] = "(so.no_so LIKE ? OR b.nama_barang LIKE ? OR b.barcode LIKE ? OR u.nama LIKE ?)";
     $params[] = "%$search%";
@@ -132,6 +139,14 @@ if (!$my_outlet_id) {
                        class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all">
             </div>
             
+            <!-- Filter Tipe SO -->
+            <?php $tipeSOFilter = $_GET['tipe_so'] ?? 'all'; ?>
+            <select name="tipe_so" class="px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white" onchange="document.getElementById('filterForm').submit()">
+                <option value="all" <?= $tipeSOFilter === 'all' ? 'selected' : '' ?>>Semua Tipe SO</option>
+                <option value="harian" <?= $tipeSOFilter === 'harian' ? 'selected' : '' ?>>SO Harian</option>
+                <option value="bulanan" <?= $tipeSOFilter === 'bulanan' ? 'selected' : '' ?>>SO Bulanan</option>
+            </select>
+
             <!-- Filter Status -->
             <select name="status" class="px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white" onchange="document.getElementById('filterForm').submit()">
                 <option value="Pending" <?= $statusFilter === 'Pending' ? 'selected' : '' ?>>Menunggu Approval (Pending)</option>

@@ -42,6 +42,12 @@ switch ($menu) {
     case 'ibarangkeluar': require_once('content/barangkeluar/input.php');        break;
     case 'vbarangkeluar': require_once('content/barangkeluar/view.php');         break;
 
+    // ── RETUR SUPPLIER ──────────────────────────────
+    case 'retursupplier':  require_once('content/retursupplier/retursupplier.php'); break;
+    case 'iretursupplier': require_once('content/retursupplier/input.php');        break;
+    case 'vretursupplier': require_once('content/retursupplier/view.php');         break;
+
+
     // ── TERIMA BARANG (Stock Keeper) ───────────────
     case 'terimabarang':  require_once('content/terimabarang/terimabarang.php'); break;
     case 'iterimabarang': require_once('content/terimabarang/input.php');        break;
@@ -91,7 +97,4 @@ switch ($menu) {
 
     // ── HAK AKSES ──────────────────────────────────
     case 'hakakses': require_once('content/hakakses/hakakses.php'); break;
-
-    // ── ACCOUNT ────────────────────────────────────
-    case 'account': require_once('content/account/account.php'); break;
 }

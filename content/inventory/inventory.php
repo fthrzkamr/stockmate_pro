@@ -94,6 +94,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             UNION ALL
             
             SELECT 
+                2 as sort_weight,
+                'Retur Supplier' as tipe,
+                rs.id_retur as id_trans,
+                rs.tanggal as tanggal,
+                rs.qty,
+                CONCAT('Retur karena: ', COALESCE(rs.alasan, 'Tidak ada alasan')) as keterangan,
+                COALESCE(s.nama_supplier, bm.supplier_lainnya, 'Supplier') as pihak_terkait,
+                rs.created_at as created_at
+            FROM retur_supplier rs
+            LEFT JOIN barang_masuk bm ON rs.id_masuk = bm.id_masuk
+            LEFT JOIN supplier s ON bm.id_supplier = s.id_supplier
+            WHERE rs.id_barang = ? AND MONTH(rs.tanggal) = ? AND YEAR(rs.tanggal) = ?
+            
+            UNION ALL
+            
+            SELECT 
                 1 as sort_weight,
                 'Keluar' as tipe,
                 bk.id_keluar as id_trans,
@@ -123,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             ORDER BY tanggal DESC, created_at DESC, sort_weight DESC
         ");
-        $histories->execute([$id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun]);
+        $histories->execute([$id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun, $id_barang, $bulan, $tahun]);
         $data = $histories->fetchAll();
 
         if (empty($data)) {
@@ -140,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $sign = '+';
                     $icon = 'fa-rotate-left';
                     $lbl = 'Ke: ' . sanitize($h['pihak_terkait']);
-                } elseif ($h['tipe'] === 'Batal Masuk') {
+                } elseif ($h['tipe'] === 'Batal Masuk' || $h['tipe'] === 'Retur Supplier') {
                     $color = 'rose';
                     $sign = '-';
                     $icon = 'fa-rotate-left';
@@ -344,24 +360,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 <script>
 // Modal History Logic
-const modalHistory = document.getElementById('modalHistory');
-const backdrop = document.getElementById('modalHistoryBackdrop');
-const panel = document.getElementById('modalHistoryPanel');
-const content = document.getElementById('historyContent');
-const title = document.getElementById('historyBarangName');
+const histModal = document.getElementById('modalHistory');
+const histBackdrop = document.getElementById('modalHistoryBackdrop');
+const histPanel = document.getElementById('modalHistoryPanel');
+const histContent = document.getElementById('historyContent');
+const histTitle = document.getElementById('historyBarangName');
 let currentHistoryId = null;
 
 function showHistory(idBarang, namaBarang) {
     currentHistoryId = idBarang;
     // Tampilkan modal
-    modalHistory.classList.remove('hidden');
+    histModal.classList.remove('hidden');
     // Animasi masuk
     setTimeout(() => {
-        backdrop.classList.remove('opacity-0');
-        panel.classList.remove('scale-95', 'opacity-0');
+        histBackdrop.classList.remove('opacity-0');
+        histPanel.classList.remove('scale-95', 'opacity-0');
     }, 10);
 
-    title.innerText = namaBarang;
+    histTitle.innerText = namaBarang;
     loadHistoryData();
 }
 
@@ -374,7 +390,7 @@ function loadHistoryData() {
     const bulan = document.getElementById('histBulan').value;
     const tahun = document.getElementById('histTahun').value;
 
-    content.innerHTML = `
+    histContent.innerHTML = `
         <div class="p-6 text-center text-slate-400">
             <i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2 text-indigo-500"></i>
             <p class="text-xs">Memuat history...</p>
@@ -393,16 +409,16 @@ function loadHistoryData() {
         })
     })
     .then(r => r.text())
-    .then(html => content.innerHTML = html)
-    .catch(() => content.innerHTML = '<div class="p-6 text-center text-red-500 text-xs">Gagal memuat history.</div>');
+    .then(html => histContent.innerHTML = html)
+    .catch(() => histContent.innerHTML = '<div class="p-6 text-center text-red-500 text-xs">Gagal memuat history.</div>');
 }
 
 function closeHistory() {
     // Animasi keluar
-    backdrop.classList.add('opacity-0');
-    panel.classList.add('scale-95', 'opacity-0');
+    histBackdrop.classList.add('opacity-0');
+    histPanel.classList.add('scale-95', 'opacity-0');
     setTimeout(() => {
-        modalHistory.classList.add('hidden');
+        histModal.classList.add('hidden');
     }, 300);
 }
 </script>

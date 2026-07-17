@@ -49,6 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$nama) continue; // Skip empty rows
                 
                 $barcode = trim($barcodes[$index] ?? '');
+                if (empty($barcode)) {
+                    for ($i = 0; $i < 15; $i++) {
+                        $barcode .= mt_rand(0, 9);
+                    }
+                }
                 $kategori = trim($kategoris[$index] ?? 'Lainnya');
                 $satuan = trim($satuans[$index] ?? 'Pcs');
                 $min_stok = (int)($min_stoks[$index] ?? 0);
