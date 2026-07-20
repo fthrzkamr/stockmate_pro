@@ -366,10 +366,14 @@ function bukaModalTipe(idKategori = null) {
     document.getElementById('tipeAction').value = 'add_tipe';
     document.getElementById('tipeId').value = '';
     document.getElementById('tipeInputNama').value = '';
-    document.getElementById('boxKatSelect').classList.remove('hidden');
+    
+    const boxKat = document.getElementById('boxKatSelect');
+    const selectKat = document.getElementById('tipeSelectKat');
+    boxKat.classList.remove('hidden');
+    selectKat.required = true;
     
     if (idKategori) {
-        document.getElementById('tipeSelectKat').value = idKategori;
+        selectKat.value = idKategori;
     }
 
     const modal = document.getElementById('modalTipe');
@@ -383,7 +387,11 @@ function editTipe(id, nama) {
     document.getElementById('tipeAction').value = 'edit_tipe';
     document.getElementById('tipeId').value = id;
     document.getElementById('tipeInputNama').value = nama;
-    document.getElementById('boxKatSelect').classList.add('hidden');
+    
+    const boxKat = document.getElementById('boxKatSelect');
+    const selectKat = document.getElementById('tipeSelectKat');
+    boxKat.classList.add('hidden');
+    selectKat.required = false;
 
     const modal = document.getElementById('modalTipe');
     const content = document.getElementById('modalTipeContent');
