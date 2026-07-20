@@ -361,6 +361,10 @@ function updateEditTipe() {
         }
         tipeSelect.appendChild(opt);
     });
+
+    if (!tipeSelect.value && filtered.length > 0) {
+        tipeSelect.value = filtered[0].id_tipe;
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -268,6 +268,10 @@ function onKategoriChange(selectElem) {
         opt.textContent = t.nama_tipe;
         tipeSelect.appendChild(opt);
     });
+
+    if (filtered.length > 0) {
+        tipeSelect.value = filtered[0].id_tipe;
+    }
 }
 
 function addRow() {
