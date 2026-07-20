@@ -33,10 +33,12 @@ try {
     $suppliers = [];
 }
 
-// Ambil daftar tipe barang
+// Ambil daftar kategori barang dan tipe barang
 try {
-    $tipe_barang_list = $conn->query("SELECT * FROM tipe_barang ORDER BY id_tipe ASC")->fetchAll();
+    $kategori_list = $conn->query("SELECT * FROM kategori_barang ORDER BY id_kategori ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $tipe_barang_list = $conn->query("SELECT * FROM tipe_barang ORDER BY id_tipe ASC")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
+    $kategori_list = [];
     $tipe_barang_list = [];
 }
 
@@ -45,7 +47,14 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $barcode     = trim($_POST['barcode'] ?? '');
     $nama_barang = trim($_POST['nama_barang'] ?? '');
-    $kategori    = trim($_POST['kategori'] ?? '');
+    $id_kat      = (int)($_POST['kategori'] ?? 0);
+    $kategori    = 'Lainnya';
+    foreach ($kategori_list as $k) {
+        if ($k['id_kategori'] == $id_kat) {
+            $kategori = $k['nama_kategori'];
+            break;
+        }
+    }
     $satuan      = trim($_POST['satuan'] ?? '');
     $min_stok    = (int)($_POST['min_stok'] ?? 0);
     $id_supplier = (int)($_POST['id_supplier'] ?? 0) ?: null;
@@ -169,44 +178,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all">
             </div>
 
-            <!-- Tipe Barang -->
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tipe Barang (Sifat Stok) <span class="text-red-500">*</span></label>
-                <select name="id_tipe" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-                    <option value="">— Pilih Tipe Barang —</option>
-                    <?php foreach ($tipe_barang_list as $t): ?>
-                    <option value="<?= $t['id_tipe'] ?>" <?= (($_POST['id_tipe'] ?? $barang['id_tipe']) == $t['id_tipe']) ? 'selected' : '' ?>>
-                        <?= sanitize($t['nama_tipe']) ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <!-- Kategori & Satuan -->
+            <!-- Kategori & Tipe Barang -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Kategori</label>
-                    <select name="kategori" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-                        <option value="Alat Rumah Tangga" <?= (($_POST['kategori'] ?? $barang['kategori']) == 'Alat Rumah Tangga') ? 'selected' : '' ?>>Alat Rumah Tangga</option>
-                        <option value="Bahan Baku Makanan" <?= (($_POST['kategori'] ?? $barang['kategori']) == 'Bahan Baku Makanan') ? 'selected' : '' ?>>Bahan Baku Makanan</option>
-                        <option value="Bahan Minuman" <?= (($_POST['kategori'] ?? $barang['kategori']) == 'Bahan Minuman') ? 'selected' : '' ?>>Bahan Minuman</option>
-                        <option value="Kimia & Pembersih" <?= (($_POST['kategori'] ?? $barang['kategori']) == 'Kimia & Pembersih') ? 'selected' : '' ?>>Kimia & Pembersih</option>
-                        <option value="Peralatan Makan" <?= (($_POST['kategori'] ?? $barang['kategori']) == 'Peralatan Makan') ? 'selected' : '' ?>>Peralatan Makan</option>
-                        <option value="Lainnya" <?= (($_POST['kategori'] ?? $barang['kategori']) == 'Lainnya') ? 'selected' : '' ?>>Lainnya</option>
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Kategori <span class="text-red-500">*</span></label>
+                    <select name="kategori" id="editKategori" onchange="updateEditTipe()" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
+                        <option value="">— Pilih Kategori —</option>
+                        <?php 
+                        $curKat = $_POST['kategori'] ?? $barang['kategori'];
+                        foreach ($kategori_list as $k): 
+                            $sel = ($curKat == $k['nama_kategori'] || $curKat == $k['id_kategori']) ? 'selected' : '';
+                        ?>
+                        <option value="<?= $k['id_kategori'] ?>" <?= $sel ?>><?= sanitize($k['nama_kategori']) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Satuan</label>
-                    <select name="satuan" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
-                        <option value="Pcs" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Pcs') ? 'selected' : '' ?>>Pcs (Pcs / Biji)</option>
-                        <option value="Botol" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Botol') ? 'selected' : '' ?>>Botol</option>
-                        <option value="Pack" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Pack') ? 'selected' : '' ?>>Pack</option>
-                        <option value="Pouch" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Pouch') ? 'selected' : '' ?>>Pouch</option>
-                        <option value="Karton" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Karton') ? 'selected' : '' ?>>Karton (Dus)</option>
-                        <option value="Liter" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Liter') ? 'selected' : '' ?>>Liter</option>
-                        <option value="Kg" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Kg') ? 'selected' : '' ?>>Kilogram (Kg)</option>
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tipe Barang <span class="text-red-500">*</span></label>
+                    <select name="id_tipe" id="editTipe" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
+                        <option value="">— Pilih Tipe Barang —</option>
                     </select>
                 </div>
+            </div>
+
+            <!-- Satuan -->
+            <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Satuan</label>
+                <select name="satuan" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
+                    <option value="Pcs" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Pcs') ? 'selected' : '' ?>>Pcs (Pcs / Biji)</option>
+                    <option value="Botol" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Botol') ? 'selected' : '' ?>>Botol</option>
+                    <option value="Pack" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Pack') ? 'selected' : '' ?>>Pack</option>
+                    <option value="Pouch" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Pouch') ? 'selected' : '' ?>>Pouch</option>
+                    <option value="Karton" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Karton') ? 'selected' : '' ?>>Karton (Dus)</option>
+                    <option value="Liter" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Liter') ? 'selected' : '' ?>>Liter</option>
+                    <option value="Kg" <?= (($_POST['satuan'] ?? $barang['satuan']) == 'Kg') ? 'selected' : '' ?>>Kilogram (Kg)</option>
+                </select>
             </div>
 
             <!-- Batas Minimum Stok -->
@@ -333,4 +339,31 @@ function stopScanner() {
         document.getElementById('scannerBox').classList.add('hidden');
     }
 }
+
+const allTipe = <?= json_encode($tipe_barang_list) ?>;
+const selectedTipeId = <?= json_encode($_POST['id_tipe'] ?? $barang['id_tipe']) ?>;
+
+function updateEditTipe() {
+    const katSelect = document.getElementById('editKategori');
+    const tipeSelect = document.getElementById('editTipe');
+    const idKat = katSelect.value;
+    
+    tipeSelect.innerHTML = '<option value="">— Pilih Tipe Barang —</option>';
+    if (!idKat) return;
+
+    const filtered = allTipe.filter(t => t.id_kategori == idKat);
+    filtered.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id_tipe;
+        opt.textContent = t.nama_tipe;
+        if (t.id_tipe == selectedTipeId) {
+            opt.selected = true;
+        }
+        tipeSelect.appendChild(opt);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    updateEditTipe();
+});
 </script>

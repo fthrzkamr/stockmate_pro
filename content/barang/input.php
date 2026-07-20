@@ -13,10 +13,12 @@ try {
     $suppliers = [];
 }
 
-// Ambil daftar tipe barang
+// Ambil daftar kategori barang dan tipe barang
 try {
-    $tipe_barang_list = $conn->query("SELECT * FROM tipe_barang ORDER BY id_tipe ASC")->fetchAll();
+    $kategori_list = $conn->query("SELECT * FROM kategori_barang ORDER BY id_kategori ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $tipe_barang_list = $conn->query("SELECT * FROM tipe_barang ORDER BY id_tipe ASC")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
+    $kategori_list = [];
     $tipe_barang_list = [];
 }
 
@@ -54,7 +56,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $barcode .= mt_rand(0, 9);
                     }
                 }
-                $kategori = trim($kategoris[$index] ?? 'Lainnya');
+                
+                $id_kat = (int)($kategoris[$index] ?? 0);
+                $kategori = 'Lainnya';
+                foreach ($kategori_list as $k) {
+                    if ($k['id_kategori'] == $id_kat) {
+                        $kategori = $k['nama_kategori'];
+                        break;
+                    }
+                }
+
                 $satuan = trim($satuans[$index] ?? 'Pcs');
                 $min_stok = (int)($min_stoks[$index] ?? 0);
                 $id_tipe = (int)($id_tipes[$index] ?? 0) ?: null;
@@ -186,8 +197,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-10 text-center">No</th>
                         <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-48">Barcode</th>
                         <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider min-w-[200px]">Nama Barang <span class="text-red-500">*</span></th>
-                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-40">Tipe <span class="text-red-500">*</span></th>
                         <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-36">Kategori</th>
+                        <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-40">Tipe <span class="text-red-500">*</span></th>
                         <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Satuan</th>
                         <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Min Stok</th>
                         <th class="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-10 text-center"><i class="fa-solid fa-trash"></i></th>
@@ -221,21 +232,15 @@ const tbody = document.getElementById('tbodyItems');
 let rowCount = 0;
 let activeRowId = null; // Menandakan baris mana yg akan diisi barcode hasil scan
 
-// Opsi dropdown untuk diclone ke setiap baris
-const optsTipe = `
-    <option value="">- Tipe -</option>
-    <?php foreach ($tipe_barang_list as $t): ?>
-    <option value="<?= $t['id_tipe'] ?>"><?= sanitize($t['nama_tipe']) ?></option>
-    <?php endforeach; ?>
-`;
+const allTipe = <?= json_encode($tipe_barang_list) ?>;
+const allKategori = <?= json_encode($kategori_list) ?>;
 
+// Opsi dropdown untuk diclone ke setiap baris
 const optsKategori = `
-    <option value="Alat Rumah Tangga">Alat Rumah Tangga</option>
-    <option value="Bahan Baku Makanan">Bahan Baku Makanan</option>
-    <option value="Bahan Minuman">Bahan Minuman</option>
-    <option value="Kimia & Pembersih">Kimia & Pembersih</option>
-    <option value="Peralatan Makan">Peralatan Makan</option>
-    <option value="Lainnya" selected>Lainnya</option>
+    <option value="">- Pilih Kategori -</option>
+    <?php foreach ($kategori_list as $k): ?>
+    <option value="<?= $k['id_kategori'] ?>"><?= sanitize($k['nama_kategori']) ?></option>
+    <?php endforeach; ?>
 `;
 
 const optsSatuan = `
@@ -247,6 +252,23 @@ const optsSatuan = `
     <option value="Liter">Liter</option>
     <option value="Kg">Kg</option>
 `;
+
+function onKategoriChange(selectElem) {
+    const tr = selectElem.closest('tr');
+    const tipeSelect = tr.querySelector('select[name="id_tipe[]"]');
+    const idKat = selectElem.value;
+    
+    tipeSelect.innerHTML = '<option value="">- Tipe -</option>';
+    if (!idKat) return;
+
+    const filtered = allTipe.filter(t => t.id_kategori == idKat);
+    filtered.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id_tipe;
+        opt.textContent = t.nama_tipe;
+        tipeSelect.appendChild(opt);
+    });
+}
 
 function addRow() {
     rowCount++;
@@ -266,13 +288,13 @@ function addRow() {
                    class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none">
         </td>
         <td class="px-4 py-2">
-            <select name="id_tipe[]" required class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none bg-white">
-                ${optsTipe}
+            <select name="kategori[]" onchange="onKategoriChange(this)" required class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none bg-white">
+                ${optsKategori}
             </select>
         </td>
         <td class="px-4 py-2">
-            <select name="kategori[]" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none bg-white">
-                ${optsKategori}
+            <select name="id_tipe[]" required class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:border-sky-400 focus:ring-1 focus:ring-sky-400 outline-none bg-white">
+                <option value="">- Tipe -</option>
             </select>
         </td>
         <td class="px-4 py-2">
