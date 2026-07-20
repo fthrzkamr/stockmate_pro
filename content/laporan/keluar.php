@@ -168,21 +168,20 @@ if ($is_print) {
         <table>
             <thead>
                 <tr>
-                    <th class="text-center" style="width: 5%">No</th>
-                    <th style="width: 12%">Tanggal</th>
-                    <th style="width: 15%">Ref Transaksi</th>
+                    <th class="text-center" style="width: 4%">No</th>
+                    <th style="width: 11%">Tanggal</th>
+                    <th style="width: 18%">Ref Transaksi</th>
                     <th>Outlet Tujuan</th>
                     <th class="text-center" style="width: 10%">Total Item</th>
                     <th class="text-center" style="width: 10%">Total Qty</th>
-                    <th style="width: 15%">Pengirim (User)</th>
+                    <th style="width: 13%">Pengirim (User)</th>
                     <th class="text-center" style="width: 10%">Status</th>
-                    <th>Keterangan</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($data)): ?>
                 <tr>
-                    <td colspan="9" class="text-center" style="padding: 20px;">Tidak ada data distribusi barang yang ditemukan.</td>
+                    <td colspan="8" class="text-center" style="padding: 20px;">Tidak ada data distribusi barang yang ditemukan.</td>
                 </tr>
                 <?php else: ?>
                     <?php 
@@ -196,6 +195,7 @@ if ($is_print) {
                     <tr>
                         <td class="text-center"><?= $no++ ?></td>
                         <td><?= date('d/m/Y', strtotime($r['tanggal'])) ?></td>
+                        <td class="mono"><?= htmlspecialchars($r['ref_trx'] ?: '—') ?></td>
                         <td>
                             <b><?= htmlspecialchars($r['nama_outlet'] ?: 'Tanpa Outlet') ?></b>
                             <?php if (!empty($r['alamat_outlet'])): ?>
@@ -210,7 +210,6 @@ if ($is_print) {
                                 <?= htmlspecialchars($r['status']) ?>
                             </span>
                         </td>
-                        <td><?= htmlspecialchars($r['keterangan'] ?: '—') ?></td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -340,14 +339,13 @@ try {
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center">Total Qty</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Pengirim (User)</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center">Status</th>
-                        <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Keterangan</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center w-20">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-150">
                     <?php if (empty($data)): ?>
                     <tr>
-                        <td colspan="10" class="px-5 py-12 text-center text-slate-400">
+                        <td colspan="9" class="px-5 py-12 text-center text-slate-400">
                             <i class="fa-solid fa-truck-fast text-3xl mb-2 block text-slate-300"></i>
                             Tidak ada data transaksi barang keluar.
                         </td>
@@ -390,9 +388,6 @@ try {
                                     <span class="w-1 h-1 rounded-full bg-<?= $status_color ?>-500"></span>
                                     <?= $status ?>
                                 </span>
-                            </td>
-                            <td class="px-5 py-3.5 text-xs text-slate-500 max-w-xs truncate" title="<?= sanitize($row['keterangan']) ?>">
-                                <?= sanitize($row['keterangan'] ?: '—') ?>
                             </td>
                             <td class="px-5 py-3.5 text-center">
                                 <button type="button" onclick="openLgModal('<?= $sistem ?>/barangkeluar/v/<?= $row['ref_trx'] ?>?readonly=1')"
