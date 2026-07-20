@@ -128,8 +128,8 @@ if ($is_print) {
     <body>
         <div class="header">
             <div style="font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #1e293b;">PT PSY BERKAH INDONESIA</div>
-            <div style="font-size: 10px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px;">StockMate Pro - System Management Inventory</div>
-            <h1 style="margin-top: 8px; font-size: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px;">Laporan Selisih Stock Opname</h1>
+            <div style="font-size: 10px; color: #64748b; margin-top: 2px; line-height: 1.3;">Bintaro Jaya, Jl. Bintaro Utama 9 Jalan Elang Raya No.17, Pondok Pucung, Pondok Aren, South Tangerang City, Banten 15229</div>
+            <h1 style="margin-top: 8px; font-size: 15px; border-top: 1px solid #e2e8f0; padding-top: 8px;">Laporan Selisih Stock Opname</h1>
             <p>Rentang Periode: <?= date('d M Y', strtotime($tgl_awal)) ?> s/d <?= date('d M Y', strtotime($tgl_akhir)) ?></p>
         </div>
 
