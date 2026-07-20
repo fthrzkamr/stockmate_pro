@@ -6,11 +6,11 @@ if (!canDo('barang', 'view')) {
 
 global $conn, $sistem;
 
-// Handle AJAX status toggle (Soft Delete / Deaktivasi)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_status') {
+// Handle AJAX Delete Barang
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_barang') {
     header('Content-Type: application/json');
     if (!canDo('barang', 'delete') && !canDo('barang', 'edit')) {
-        echo json_encode(['status' => 'error', 'msg' => 'Anda tidak memiliki hak akses untuk memodifikasi barang ini.']);
+        echo json_encode(['status' => 'error', 'msg' => 'Anda tidak memiliki hak akses untuk menghapus barang ini.']);
         exit;
     }
     
@@ -21,20 +21,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
     
     try {
-        $stmt = $conn->prepare("SELECT nama_barang, is_active FROM barang WHERE id_barang = ?");
+        $stmt = $conn->prepare("SELECT nama_barang FROM barang WHERE id_barang = ?");
         $stmt->execute([$id_barang]);
-        $barang = $stmt->fetch();
+        $nama = $stmt->fetchColumn();
         
-        if ($barang) {
-            $new_status = $barang['is_active'] ? 0 : 1;
-            $conn->prepare("UPDATE barang SET is_active = ? WHERE id_barang = ?")->execute([$new_status, $id_barang]);
+        if ($nama) {
+            $conn->prepare("DELETE FROM inventory WHERE id_barang = ?")->execute([$id_barang]);
+            $conn->prepare("DELETE FROM barang WHERE id_barang = ?")->execute([$id_barang]);
             
-            $status_label = $new_status ? 'Mengaktifkan kembali' : 'Menonaktifkan (Soft Delete)';
-            writeAuditLog($new_status ? 'UPDATE' : 'DELETE', 'barang', $id_barang, "$status_label barang: {$barang['nama_barang']}");
+            writeAuditLog('DELETE', 'barang', $id_barang, "Menghapus barang: $nama");
             
             echo json_encode([
                 'status' => 'success', 
-                'msg' => "Barang <b>{$barang['nama_barang']}</b> berhasil " . ($new_status ? 'diaktifkan.' : 'dinonaktifkan (soft deleted).')
+                'msg' => "Barang <b>$nama</b> berhasil dihapus dari sistem."
             ]);
         } else {
             echo json_encode(['status' => 'error', 'msg' => 'Barang tidak ditemukan.']);
@@ -221,13 +220,10 @@ try {
                                 <?php endif; ?>
                                 
                                 <?php if (canDo('barang', 'delete') || canDo('barang', 'edit')): ?>
-                                <button onclick="toggleBarang(<?= $b['id_barang'] ?>, '<?= sanitize($b['nama_barang']) ?>', <?= $b['is_active'] ?>)"
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center transition-colors border
-                                               <?= $b['is_active'] 
-                                                   ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' 
-                                                   : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100' ?>" 
-                                        title="<?= $b['is_active'] ? 'Nonaktifkan (Soft Delete)' : 'Aktifkan' ?>">
-                                    <i class="fa-solid <?= $b['is_active'] ? 'fa-eye-slash' : 'fa-eye' ?> text-xs"></i>
+                                <button onclick="hapusBarang(<?= $b['id_barang'] ?>, '<?= sanitize($b['nama_barang']) ?>')"
+                                        class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-colors border border-rose-100" 
+                                        title="Hapus Barang">
+                                    <i class="fa-solid fa-trash text-xs"></i>
                                 </button>
                                 <?php endif; ?>
                             </div>
@@ -245,35 +241,30 @@ try {
 </div>
 
 <script>
-// Toggle Status (Soft Delete)
-function toggleBarang(id, nama, active) {
-    const title = active ? 'Nonaktifkan Barang?' : 'Aktifkan Barang?';
-    const text = active 
-        ? `Barang <b>${nama}</b> akan disembunyikan dari form transaksi (barang masuk/keluar), namun riwayat lamanya tetap tersimpan.` 
-        : `Barang <b>${nama}</b> akan diaktifkan kembali agar bisa digunakan dalam form transaksi.`;
-        
+// Hapus Barang
+function hapusBarang(id, nama) {
     Swal.fire({
-        title: title,
-        html: text,
+        title: 'Hapus Barang?',
+        html: `Apakah Anda yakin ingin menghapus barang <b>${nama}</b> secara permanen?`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: active ? '#ef4444' : '#10b981',
+        confirmButtonColor: '#ef4444',
         cancelButtonColor: '#94a3b8',
-        confirmButtonText: active ? 'Ya, Nonaktifkan!' : 'Ya, Aktifkan!',
+        confirmButtonText: 'Ya, Hapus!',
         cancelButtonText: 'Batal'
     }).then(result => {
         if (!result.isConfirmed) return;
         
         Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         const fd = new FormData();
-        fd.append('action', 'toggle_status');
+        fd.append('action', 'delete_barang');
         fd.append('id_barang', id);
         
         fetch('<?= $sistem ?>/barang', { method: 'POST', body: fd })
             .then(r => r.json())
             .then(res => {
                 if (res.status === 'success') {
-                    Swal.fire({ icon: 'success', title: 'Berhasil!', text: res.msg, timer: 1500, showConfirmButton: false })
+                    Swal.fire({ icon: 'success', title: 'Berhasil!', html: res.msg, timer: 1500, showConfirmButton: false })
                         .then(() => location.reload());
                 } else {
                     Swal.fire({ icon: 'error', title: 'Gagal!', text: res.msg });
