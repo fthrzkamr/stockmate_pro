@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id_supplier = (int)$id_supplier ?: null;
     }
 
-    $keterangan = trim($_POST['keterangan'] ?? '');
+    $keterangan = null;
     $id_user    = $_SESSION['sess_mngid'] ?? null;
     
     $items_id  = $_POST['item_id_barang'] ?? [];
@@ -168,12 +168,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="text" name="supplier_lainnya" id="inputSupplierLainnya" value="<?= htmlspecialchars($_POST['supplier_lainnya'] ?? '') ?>" placeholder="Masukkan nama supplier (di luar sistem)..."
                            class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-sky-50">
                 </div>
-
-                <div class="sm:col-span-2">
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Keterangan / Catatan <span class="text-slate-400 font-normal">(Opsional)</span></label>
-                    <textarea name="keterangan" rows="2" placeholder="Masukkan nomor nota/invoice, catatan pengiriman, dll..."
-                              class="w-full px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"><?= htmlspecialchars($_POST['keterangan'] ?? '') ?></textarea>
-                </div>
             </div>
         </div>
 
@@ -226,11 +220,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Section 3: Daftar Keranjang -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                <p class="text-sm font-semibold text-slate-700">
-                    <i class="fa-solid fa-list-check text-emerald-500 mr-2"></i>Daftar Barang Masuk
-                </p>
-                <span id="cartBadge" class="text-xs bg-slate-200 text-slate-600 font-bold px-2.5 py-0.5 rounded-full">0 item</span>
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <p class="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-emerald-500"></i> Daftar Barang Masuk
+                    </p>
+                    <div class="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                        <span class="inline-flex items-center gap-1 font-medium text-slate-600">
+                            <i class="fa-regular fa-calendar text-indigo-500"></i> Tanggal Penerimaan: <b class="text-slate-800"><?= date('d M Y') ?></b>
+                        </span>
+                    </div>
+                </div>
+                <span id="cartBadge" class="text-xs bg-slate-200 text-slate-600 font-bold px-2.5 py-0.5 rounded-full flex-shrink-0">0 item</span>
             </div>
 
             <div id="cartEmpty" class="px-6 py-10 text-center text-slate-400">
