@@ -15,14 +15,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     try {
         if ($action === 'add_barang_kat') {
             $nama_barang = trim($_POST['nama_barang'] ?? '');
-            $id_kat      = (int)($_POST['id_kategori'] ?? 0);
-            $id_tipe     = (int)($_POST['id_tipe'] ?? 0);
+            $raw_id_kat  = $_POST['id_kategori'] ?? '';
+            $new_kat_txt = trim($_POST['new_kategori'] ?? '');
+            $raw_id_tipe = $_POST['id_tipe'] ?? '';
+            $new_tipe_txt= trim($_POST['new_tipe'] ?? '');
             $satuan      = trim($_POST['satuan'] ?? 'Pcs');
             $min_stok    = (int)($_POST['min_stok'] ?? 5);
 
             if (!$nama_barang) throw new Exception('Nama barang wajib diisi.');
-            if (!$id_kat) throw new Exception('Kategori wajib dipilih.');
-            if (!$id_tipe) throw new Exception('Tipe barang wajib dipilih.');
+
+            // Proses Kategori (Ada/Baru)
+            if ($raw_id_kat === 'new' || ($raw_id_kat === '' && $new_kat_txt !== '')) {
+                if (!$new_kat_txt) throw new Exception('Nama kategori baru wajib diisi.');
+                $stC = $conn->prepare("SELECT id_kategori FROM kategori_barang WHERE LOWER(nama_kategori) = LOWER(?)");
+                $stC->execute([$new_kat_txt]);
+                $id_kat = (int)$stC->fetchColumn();
+                if (!$id_kat) {
+                    $insC = $conn->prepare("INSERT INTO kategori_barang (nama_kategori) VALUES (?)");
+                    $insC->execute([$new_kat_txt]);
+                    $id_kat = (int)$conn->lastInsertId();
+                }
+            } else {
+                $id_kat = (int)$raw_id_kat;
+            }
+            if (!$id_kat) throw new Exception('Kategori wajib dipilih atau dibuat baru.');
+
+            // Proses Tipe Barang (Ada/Baru)
+            if ($raw_id_tipe === 'new' || ($raw_id_tipe === '' && $new_tipe_txt !== '')) {
+                if (!$new_tipe_txt) throw new Exception('Nama tipe baru wajib diisi.');
+                $stT = $conn->prepare("SELECT id_tipe FROM tipe_barang WHERE id_kategori = ? AND LOWER(nama_tipe) = LOWER(?)");
+                $stT->execute([$id_kat, $new_tipe_txt]);
+                $id_tipe = (int)$stT->fetchColumn();
+                if (!$id_tipe) {
+                    $insT = $conn->prepare("INSERT INTO tipe_barang (id_kategori, nama_tipe) VALUES (?, ?)");
+                    $insT->execute([$id_kat, $new_tipe_txt]);
+                    $id_tipe = (int)$conn->lastInsertId();
+                }
+            } else {
+                $id_tipe = (int)$raw_id_tipe;
+            }
+            if (!$id_tipe) throw new Exception('Tipe barang wajib dipilih atau dibuat baru.');
 
             $stKat = $conn->prepare("SELECT nama_kategori FROM kategori_barang WHERE id_kategori = ?");
             $stKat->execute([$id_kat]);
@@ -51,10 +83,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($action === 'edit_barang_kat') {
             $id_barang   = (int)($_POST['id_barang'] ?? 0);
             $nama_barang = trim($_POST['nama_barang'] ?? '');
-            $id_kat      = (int)($_POST['id_kategori'] ?? 0);
-            $id_tipe     = (int)($_POST['id_tipe'] ?? 0);
+            $raw_id_kat  = $_POST['id_kategori'] ?? '';
+            $new_kat_txt = trim($_POST['new_kategori'] ?? '');
+            $raw_id_tipe = $_POST['id_tipe'] ?? '';
+            $new_tipe_txt= trim($_POST['new_tipe'] ?? '');
 
             if (!$id_barang || !$nama_barang) throw new Exception('Data tidak valid.');
+
+            // Proses Kategori (Ada/Baru)
+            if ($raw_id_kat === 'new' || ($raw_id_kat === '' && $new_kat_txt !== '')) {
+                if (!$new_kat_txt) throw new Exception('Nama kategori baru wajib diisi.');
+                $stC = $conn->prepare("SELECT id_kategori FROM kategori_barang WHERE LOWER(nama_kategori) = LOWER(?)");
+                $stC->execute([$new_kat_txt]);
+                $id_kat = (int)$stC->fetchColumn();
+                if (!$id_kat) {
+                    $insC = $conn->prepare("INSERT INTO kategori_barang (nama_kategori) VALUES (?)");
+                    $insC->execute([$new_kat_txt]);
+                    $id_kat = (int)$conn->lastInsertId();
+                }
+            } else {
+                $id_kat = (int)$raw_id_kat;
+            }
+
+            // Proses Tipe Barang (Ada/Baru)
+            if ($raw_id_tipe === 'new' || ($raw_id_tipe === '' && $new_tipe_txt !== '')) {
+                if (!$new_tipe_txt) throw new Exception('Nama tipe baru wajib diisi.');
+                $stT = $conn->prepare("SELECT id_tipe FROM tipe_barang WHERE id_kategori = ? AND LOWER(nama_tipe) = LOWER(?)");
+                $stT->execute([$id_kat, $new_tipe_txt]);
+                $id_tipe = (int)$stT->fetchColumn();
+                if (!$id_tipe) {
+                    $insT = $conn->prepare("INSERT INTO tipe_barang (id_kategori, nama_tipe) VALUES (?, ?)");
+                    $insT->execute([$id_kat, $new_tipe_txt]);
+                    $id_tipe = (int)$conn->lastInsertId();
+                }
+            } else {
+                $id_tipe = (int)$raw_id_tipe;
+            }
 
             $stKat = $conn->prepare("SELECT nama_kategori FROM kategori_barang WHERE id_kategori = ?");
             $stKat->execute([$id_kat]);
@@ -308,21 +372,32 @@ try {
 
                 <!-- Kategori -->
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Kategori <span class="text-red-500">*</span></label>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Kategori <span class="text-red-500">*</span></label>
+                    </div>
                     <select name="id_kategori" id="selectKategori" onchange="onModalKatChange()" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20 outline-none bg-white" required>
                         <option value="">— Pilih Kategori —</option>
                         <?php foreach ($kategori_list as $k): ?>
                         <option value="<?= $k['id_kategori'] ?>"><?= htmlspecialchars($k['nama_kategori']) ?></option>
                         <?php endforeach; ?>
+                        <option value="new" class="font-bold text-sky-600">+ Tambah Kategori Baru...</option>
                     </select>
+                    <div id="boxNewKategori" class="hidden mt-2">
+                        <input type="text" name="new_kategori" id="inputNewKategori" placeholder="Ketik Nama Kategori Baru..." class="w-full px-4 py-2.5 text-sm border border-sky-300 rounded-xl focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 outline-none bg-sky-50/50">
+                    </div>
                 </div>
 
                 <!-- Tipe Barang -->
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Tipe Barang <span class="text-red-500">*</span></label>
-                    <select name="id_tipe" id="selectTipe" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20 outline-none bg-white" required>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Tipe Barang <span class="text-red-500">*</span></label>
+                    </div>
+                    <select name="id_tipe" id="selectTipe" onchange="onModalTipeChange()" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20 outline-none bg-white" required>
                         <option value="">— Pilih Tipe Barang —</option>
                     </select>
+                    <div id="boxNewTipe" class="hidden mt-2">
+                        <input type="text" name="new_tipe" id="inputNewTipe" placeholder="Ketik Nama Tipe Baru..." class="w-full px-4 py-2.5 text-sm border border-sky-300 rounded-xl focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 outline-none bg-sky-50/50">
+                    </div>
                 </div>
             </div>
             
@@ -340,25 +415,62 @@ try {
 const allTipe = <?= json_encode($tipe_list) ?>;
 
 function onModalKatChange(targetTipeId = null) {
-    const idKat = document.getElementById('selectKategori').value;
+    const valKat = document.getElementById('selectKategori').value;
+    const boxNewKategori = document.getElementById('boxNewKategori');
+    const inputNewKategori = document.getElementById('inputNewKategori');
     const selectTipe = document.getElementById('selectTipe');
+
+    if (valKat === 'new') {
+        boxNewKategori.classList.remove('hidden');
+        inputNewKategori.setAttribute('required', 'required');
+    } else {
+        boxNewKategori.classList.add('hidden');
+        inputNewKategori.removeAttribute('required');
+        inputNewKategori.value = '';
+    }
     
     selectTipe.innerHTML = '<option value="">— Pilih Tipe Barang —</option>';
-    if (!idKat) return;
+    
+    if (valKat && valKat !== 'new') {
+        const filtered = allTipe.filter(t => t.id_kategori == valKat);
+        filtered.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id_tipe;
+            opt.textContent = t.nama_tipe;
+            if (targetTipeId && t.id_tipe == targetTipeId) {
+                opt.selected = true;
+            }
+            selectTipe.appendChild(opt);
+        });
+    }
 
-    const filtered = allTipe.filter(t => t.id_kategori == idKat);
-    filtered.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t.id_tipe;
-        opt.textContent = t.nama_tipe;
-        if (targetTipeId && t.id_tipe == targetTipeId) {
-            opt.selected = true;
-        }
-        selectTipe.appendChild(opt);
-    });
+    // Always append option to add new Tipe
+    const optNewT = document.createElement('option');
+    optNewT.value = 'new';
+    optNewT.className = 'font-bold text-sky-600';
+    optNewT.textContent = '+ Tambah Tipe Baru...';
+    selectTipe.appendChild(optNewT);
 
-    if (!selectTipe.value && filtered.length > 0) {
-        selectTipe.value = filtered[0].id_tipe;
+    if (targetTipeId && targetTipeId === 'new') {
+        selectTipe.value = 'new';
+    } else if (!selectTipe.value && selectTipe.options.length > 2) {
+        selectTipe.selectedIndex = 1;
+    }
+    onModalTipeChange();
+}
+
+function onModalTipeChange() {
+    const valTipe = document.getElementById('selectTipe').value;
+    const boxNewTipe = document.getElementById('boxNewTipe');
+    const inputNewTipe = document.getElementById('inputNewTipe');
+
+    if (valTipe === 'new') {
+        boxNewTipe.classList.remove('hidden');
+        inputNewTipe.setAttribute('required', 'required');
+    } else {
+        boxNewTipe.classList.add('hidden');
+        inputNewTipe.removeAttribute('required');
+        inputNewTipe.value = '';
     }
 }
 
