@@ -7,7 +7,7 @@ if (!canDo('barangkeluar', 'input')) {
 global $conn, $sistem;
 
 // Ambil daftar outlet
-$outlets = $conn->query("SELECT * FROM outlet ORDER BY nama_outlet ASC")->fetchAll();
+$outlets = $conn->query("SELECT * FROM outlet WHERE is_active = 1 ORDER BY nama_outlet ASC")->fetchAll();
 
 // Ambil daftar barang yang stoknya lebih dari 0 (JSON untuk JS)
 $barangs = $conn->query("
@@ -22,9 +22,10 @@ $error = '';
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tanggal    = $_POST['tanggal'] ?? date('Y-m-d');
+    // Tanggal dikunci hari ini
+    $tanggal    = date('Y-m-d');
     $id_outlet  = (int)($_POST['id_outlet'] ?? 0);
-    $keterangan = trim($_POST['keterangan'] ?? '');
+    $keterangan = null; // Opsi keterangan dihapus
     $id_user    = $_SESSION['user_id'] ?? null;
 
     $items_id  = $_POST['item_id_barang'] ?? [];
@@ -61,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $id_barang = (int)$id_barang;
                     $qty       = (int)($items_qty[$idx] ?? 0);
                     if ($qty <= 0) continue;
-                    $stmt->execute([$kode_transaksi, $tanggal, $id_outlet, $id_barang, $qty, $keterangan ?: null, $id_user]);
+                    $stmt->execute([$kode_transaksi, $tanggal, $id_outlet, $id_barang, $qty, $keterangan, $id_user]);
                     $new_id = (int)$conn->lastInsertId();
                     writeAuditLog('CREATE', 'barang_keluar', $new_id, "Mengirim $qty item ke Outlet ID: $id_outlet");
                 }
@@ -113,26 +114,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </p>
             </div>
             <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <!-- Tanggal dikunci ke Hari Ini (Readonly) -->
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Keluar</label>
-                    <input type="date" name="tanggal" required value="<?= htmlspecialchars($_POST['tanggal'] ?? date('Y-m-d')) ?>"
-                           class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Keluar (Hari Ini)</label>
+                    <input type="text" readonly value="<?= date('d M Y') ?>"
+                           class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-100 text-slate-600 font-semibold cursor-not-allowed outline-none">
+                    <input type="hidden" name="tanggal" value="<?= date('Y-m-d') ?>">
                 </div>
+
+                <!-- Outlet Tujuan -->
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Outlet Tujuan</label>
-                    <select name="id_outlet" id="id_outlet" required class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
-                        <option value="">-- Pilih Outlet --</option>
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Outlet Tujuan <span class="text-red-500">*</span></label>
+                    <select name="id_outlet" id="id_outlet" required onchange="updateOutletAlamat()" class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
+                        <option value="" data-alamat="">-- Pilih Outlet --</option>
                         <?php foreach ($outlets as $o): ?>
-                            <option value="<?= $o['id_outlet'] ?>" <?= (isset($_POST['id_outlet']) && $_POST['id_outlet']==$o['id_outlet']) ? 'selected' : '' ?>>
+                            <option value="<?= $o['id_outlet'] ?>" 
+                                    data-alamat="<?= htmlspecialchars($o['alamat'] ?: 'Alamat tidak tersedia') ?>"
+                                    <?= (isset($_POST['id_outlet']) && $_POST['id_outlet']==$o['id_outlet']) ? 'selected' : '' ?>>
                                 <?= sanitize($o['nama_outlet']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                </div>
-                <div class="sm:col-span-2">
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Keterangan / Catatan <span class="text-slate-400 font-normal">(Opsional)</span></label>
-                    <input type="text" name="keterangan" value="<?= htmlspecialchars($_POST['keterangan'] ?? '') ?>" placeholder="Nomor surat jalan, catatan pengiriman, dll..."
-                           class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all">
                 </div>
             </div>
         </div>
@@ -186,11 +188,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Section 3: Daftar Barang (Cart) -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                <p class="text-sm font-semibold text-slate-700">
-                    <i class="fa-solid fa-list-check text-emerald-500 mr-2"></i>Daftar Barang yang Akan Dikirim
-                </p>
-                <span id="cartBadge" class="text-xs bg-slate-200 text-slate-600 font-bold px-2.5 py-0.5 rounded-full">0 item</span>
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <p class="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-emerald-500"></i> Daftar Barang yang Akan Dikirim
+                    </p>
+                    <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1">
+                        <span class="inline-flex items-center gap-1 font-medium text-slate-600">
+                            <i class="fa-regular fa-calendar text-indigo-500"></i> Tanggal: <b class="text-slate-800"><?= date('d M Y') ?></b>
+                        </span>
+                        <span class="text-slate-300">•</span>
+                        <span class="inline-flex items-center gap-1 font-medium text-slate-600">
+                            <i class="fa-solid fa-location-dot text-rose-500"></i> Alamat Outlet: <b id="displayAlamatOutlet" class="text-slate-800 italic">Pilih outlet terlebih dahulu</b>
+                        </span>
+                    </div>
+                </div>
+                <span id="cartBadge" class="text-xs bg-slate-200 text-slate-600 font-bold px-2.5 py-0.5 rounded-full flex-shrink-0">0 item</span>
             </div>
 
             <!-- Empty State -->
@@ -239,12 +252,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 let html5QrcodeScanner = null;
-// cart: { id_barang, nama, barcode, stok, satuan }[]
 let cart = [];
 
 $(document).ready(function() {
     $('.select2-barang').select2({ width: '100%', placeholder: '-- Ketik Nama Barang --' });
+    updateOutletAlamat();
 });
+
+function updateOutletAlamat() {
+    const select = document.getElementById('id_outlet');
+    const display = document.getElementById('displayAlamatOutlet');
+    if (!select || !display) return;
+
+    const selectedOpt = select.options[select.selectedIndex];
+    const alamat = selectedOpt ? selectedOpt.dataset.alamat : '';
+
+    if (select.value && alamat) {
+        display.textContent = alamat;
+        display.classList.remove('italic', 'text-slate-400');
+        display.classList.add('text-slate-800');
+    } else {
+        display.textContent = 'Pilih outlet terlebih dahulu';
+        display.classList.add('italic');
+        display.classList.remove('text-slate-800');
+    }
+}
 
 // ─── CART LOGIC ──────────────────────────────────────────────────────────────
 
@@ -256,9 +288,7 @@ function addItemToCart(idBarang = null) {
     const opt = select.querySelector(`option[value="${id}"]`);
     if (!opt) return;
 
-    // Cek apakah sudah ada di cart
     if (cart.find(c => c.id == id)) {
-        // Fokus ke input qty-nya saja
         const qtyEl = document.getElementById('qty_' + id);
         if (qtyEl) { qtyEl.focus(); qtyEl.select(); }
         Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Barang sudah ada di daftar!', showConfirmButton: false, timer: 1500 });
@@ -274,15 +304,12 @@ function addItemToCart(idBarang = null) {
         qty:     1
     });
 
-    // Disable option in dropdown
     $('#selectBarangAdd option[value="' + id + '"]').prop('disabled', true);
     $('#selectBarangAdd').select2({ width: '100%', placeholder: '-- Ketik Nama Barang --' });
 
     renderCart();
-    // Reset dropdown
     $('#selectBarangAdd').val('').trigger('change');
 
-    // Autofocus ke qty input yang baru ditambah
     setTimeout(() => {
         const qtyEl = document.getElementById('qty_' + id);
         if (qtyEl) { qtyEl.focus(); qtyEl.select(); }
@@ -291,11 +318,8 @@ function addItemToCart(idBarang = null) {
 
 function removeFromCart(id) {
     cart = cart.filter(c => c.id != id);
-    
-    // Re-enable option in dropdown
     $('#selectBarangAdd option[value="' + id + '"]').prop('disabled', false);
     $('#selectBarangAdd').select2({ width: '100%', placeholder: '-- Ketik Nama Barang --' });
-    
     renderCart();
 }
 
@@ -357,14 +381,12 @@ function renderCart() {
         `;
         tbody.appendChild(row);
 
-        // Hidden inputs for form submission
         hiddenDiv.innerHTML += `<input type="hidden" name="item_id_barang[]" value="${item.id}">`;
         hiddenDiv.innerHTML += `<input type="hidden" id="hidden_qty_${item.id}" name="item_qty[]" value="${item.qty}">`;
     });
 }
 
 function validateForm() {
-    // Sync qty values dari input ke hidden inputs
     cart.forEach(item => {
         const qtyEl = document.getElementById('qty_' + item.id);
         const hiddenEl = document.getElementById('hidden_qty_' + item.id);
@@ -372,7 +394,6 @@ function validateForm() {
             hiddenEl.value = qtyEl.value;
         }
 
-        // Validasi qty > stok
         if (parseInt(qtyEl?.value || 0) > item.stok) {
             Swal.fire({
                 icon: 'error',
