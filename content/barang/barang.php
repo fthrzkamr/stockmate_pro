@@ -8,6 +8,7 @@ global $conn, $sistem;
 
 // Handle AJAX Delete Barang
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_barang') {
+    ob_clean();
     header('Content-Type: application/json');
     if (!canDo('barang', 'delete') && !canDo('barang', 'edit')) {
         echo json_encode(['status' => 'error', 'msg' => 'Anda tidak memiliki hak akses untuk menghapus barang ini.']);
