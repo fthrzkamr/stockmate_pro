@@ -47,7 +47,7 @@ if ($selected_outlet) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tanggal = $_POST['tanggal'] ?? date('Y-m-d');
+    $tanggal = date('Y-m-d');
     $post_outlet_id = $my_outlet_id ?: (int)($_POST['outlet_id'] ?? 0);
     $items_id = $_POST['id_barang'] ?? [];
     $items_akhir = $_POST['stok_akhir'] ?? [];
@@ -131,9 +131,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Tanggal -->
             <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Perhitungan <span class="text-red-500">*</span></label>
-                <input type="date" name="tanggal" value="<?= htmlspecialchars($_POST['tanggal'] ?? date('Y-m-d')) ?>" required
-                       class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-slate-50">
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Perhitungan (Hari Ini)</label>
+                <input type="text" readonly value="<?= date('d M Y') ?>"
+                       class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-100 text-slate-600 font-semibold cursor-not-allowed outline-none">
+                <input type="hidden" name="tanggal" value="<?= date('Y-m-d') ?>">
             </div>
 
             <!-- Pilih Outlet -->

@@ -24,7 +24,7 @@ $error = '';
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tanggal          = $_POST['tanggal'] ?? date('Y-m-d');
+    $tanggal      = date('Y-m-d');
     $id_supplier      = $_POST['id_supplier'] ?? '';
     $supplier_lainnya = null;
     
@@ -144,9 +144,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Masuk</label>
-                    <input type="date" name="tanggal" value="<?= htmlspecialchars($_POST['tanggal'] ?? date('Y-m-d')) ?>" required
-                           class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-slate-50">
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Masuk (Hari Ini)</label>
+                    <input type="text" readonly value="<?= date('d M Y') ?>"
+                           class="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-100 text-slate-600 font-semibold cursor-not-allowed outline-none">
+                    <input type="hidden" name="tanggal" value="<?= date('Y-m-d') ?>">
                 </div>
                 
                 <div>
