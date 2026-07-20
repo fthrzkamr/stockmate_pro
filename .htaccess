@@ -23,6 +23,11 @@
     RewriteRule ^barang/v/(.*)$             sistem.php?menu=vbarang&keycode=$1 [L]
 
     # ==============================
+    # KATEGORI BARANG
+    # ==============================
+    RewriteRule ^kategoribarang$            sistem.php?menu=kategoribarang [QSA,L]
+
+    # ==============================
     # CETAK BARCODE
     # ==============================
     RewriteRule ^cetakbarcode$              sistem.php?menu=cetakbarcode [QSA,L]

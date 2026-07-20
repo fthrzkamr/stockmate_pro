@@ -12,6 +12,7 @@ switch ($menu) {
     case 'ibarang':     require_once('content/barang/input.php');  break;
     case 'ebarang':     require_once('content/barang/edit.php');   break;
     case 'vbarang':     require_once('content/barang/view.php');   break;
+    case 'kategoribarang': require_once('content/kategoribarang/kategoribarang.php'); break;
 
     // ── CETAK BARCODE ──────────────────────────────
     case 'cetakbarcode':  require_once('content/cetakbarcode/cetakbarcode.php'); break;
