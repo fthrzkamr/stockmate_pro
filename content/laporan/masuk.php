@@ -155,18 +155,17 @@ if ($is_print) {
                 <tr>
                     <th class="text-center" style="width: 5%">No</th>
                     <th style="width: 12%">Tanggal</th>
-                    <th style="width: 15%">Ref Transaksi</th>
+                    <th style="width: 18%">Ref Transaksi</th>
                     <th>Supplier</th>
-                    <th class="text-center" style="width: 10%">Total Item</th>
-                    <th class="text-center" style="width: 10%">Total Qty</th>
-                    <th style="width: 15%">Penerima (User)</th>
-                    <th>Keterangan</th>
+                    <th class="text-center" style="width: 12%">Total Item</th>
+                    <th class="text-center" style="width: 12%">Total Qty</th>
+                    <th style="width: 18%">Penerima (User)</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($data)): ?>
                 <tr>
-                    <td colspan="8" class="text-center" style="padding: 20px;">Tidak ada data penerimaan barang yang ditemukan.</td>
+                    <td colspan="7" class="text-center" style="padding: 20px;">Tidak ada data penerimaan barang yang ditemukan.</td>
                 </tr>
                 <?php else: ?>
                     <?php 
@@ -181,7 +180,6 @@ if ($is_print) {
                         <td class="text-center mono"><?= number_format($r['total_item']) ?> Jenis</td>
                         <td class="text-center mono" style="font-weight: bold; color: #137333;">+<?= number_format($r['total_qty']) ?></td>
                         <td><?= htmlspecialchars($r['operator'] ?: 'System') ?></td>
-                        <td><?= htmlspecialchars($r['keterangan'] ?: '—') ?></td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -215,14 +213,14 @@ try {
                 <i class="fa-solid fa-arrow-left text-sm"></i>
             </a>
             <div>
-                <h1 class="text-xl font-bold text-slate-800">Laporan Barang Masuk (HO)</h1>
-                <p class="text-slate-500 text-sm">Ringkasan transaksi penerimaan pasokan barang dari supplier yang dikelompokkan per dokumen.</p>
+                <h1 class="text-xl font-bold text-slate-800">Laporan Penerimaan Barang (Masuk)</h1>
+                <p class="text-slate-500 text-sm">Rekapitulasi riwayat stok barang masuk yang diterima dari supplier ke Gudang Pusat.</p>
             </div>
         </div>
         
         <?php if (canDo('laporan', 'print') || canDo('laporanmasuk', 'print')): ?>
         <button type="button" onclick="cetakLaporan()"
-                class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-2">
+                class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-2">
             <i class="fa-solid fa-print"></i> Cetak Laporan
         </button>
         <?php endif; ?>
@@ -239,24 +237,24 @@ try {
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tanggal Mulai</label>
                 <input type="date" name="tgl_awal" value="<?= $tgl_awal ?>" 
-                       class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white">
+                       class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
             </div>
 
             <!-- Filter Tanggal Akhir -->
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tanggal Selesai</label>
                 <input type="date" name="tgl_akhir" value="<?= $tgl_akhir ?>" 
-                       class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white">
+                       class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
             </div>
 
             <!-- Filter Supplier -->
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Supplier</label>
-                <select name="supplier" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white" onchange="document.getElementById('filterForm').submit()">
+                <select name="supplier" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white" onchange="document.getElementById('filterForm').submit()">
                     <option value="">Semua Supplier</option>
-                    <?php foreach ($suppliers as $s): ?>
-                    <option value="<?= $s['id_supplier'] ?>" <?= $supplier_filter == $s['id_supplier'] ? 'selected' : '' ?>>
-                        <?= sanitize($s['nama_supplier']) ?>
+                    <?php foreach ($suppliers as $sup): ?>
+                    <option value="<?= $sup['id_supplier'] ?>" <?= $supplier_filter == $sup['id_supplier'] ? 'selected' : '' ?>>
+                        <?= sanitize($sup['nama_supplier']) ?>
                     </option>
                     <?php endforeach; ?>
                 </select>
@@ -264,11 +262,11 @@ try {
 
             <!-- Keyword Search -->
             <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cari Transaksi / Barang</label>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cari Supplier / Ref</label>
                 <div class="flex gap-2">
-                    <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Ref Trx, supplier, barang..."
-                           class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white">
-                    <button type="submit" class="bg-indigo-50 hover:bg-indigo-100 border border-indigo-250 text-indigo-600 px-3.5 rounded-xl text-sm font-semibold transition-colors">
+                    <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Nama supplier, ref..."
+                           class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all bg-white">
+                    <button type="submit" class="bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-600 px-3.5 rounded-xl text-sm font-semibold transition-colors">
                         Filter
                     </button>
                 </div>
@@ -293,14 +291,13 @@ try {
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center">Total Item</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center">Total Qty</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Penerima (User)</th>
-                        <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Keterangan</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center w-20">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-150">
                     <?php if (empty($data)): ?>
                     <tr>
-                        <td colspan="9" class="px-5 py-12 text-center text-slate-400">
+                        <td colspan="8" class="px-5 py-12 text-center text-slate-400">
                             <i class="fa-solid fa-truck-ramp-box text-3xl mb-2 block text-slate-300"></i>
                             Tidak ada data transaksi barang masuk.
                         </td>
@@ -329,9 +326,6 @@ try {
                             </td>
                             <td class="px-5 py-3.5 text-slate-600 font-medium">
                                 <?= sanitize($row['operator'] ?: 'System') ?>
-                            </td>
-                            <td class="px-5 py-3.5 text-xs text-slate-500 max-w-xs truncate" title="<?= sanitize($row['keterangan']) ?>">
-                                <?= sanitize($row['keterangan'] ?: '—') ?>
                             </td>
                             <td class="px-5 py-3.5 text-center">
                                 <button type="button" onclick="openLgModal('<?= $sistem ?>/barangmasuk/v/<?= $row['ref_trx'] ?>?readonly=1')"

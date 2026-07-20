@@ -87,14 +87,13 @@ try {
                         <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Item</th>
                         <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Qty</th>
                         <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Status</th>
-                        <th class="px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Keterangan</th>
                         <th class="px-5 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-24">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     <?php if (empty($list)): ?>
                     <tr>
-                        <td colspan="8" class="px-5 py-12 text-center text-slate-400 text-sm">
+                        <td colspan="7" class="px-5 py-12 text-center text-slate-400 text-sm">
                             <i class="fa-solid fa-truck-ramp-box text-3xl mb-2 block text-slate-200"></i>
                             Belum ada riwayat transaksi barang masuk.
                         </td>
@@ -106,7 +105,7 @@ try {
                         $statusIcon = $statusText === 'Dibatalkan' ? 'xmark' : 'check';
                     ?>
                     <tr class="hover:bg-slate-50/50 transition-colors masuk-row" 
-                        data-search="<?= strtolower($r['ref_trx'].' '.$r['nama_supplier'].' '.$r['keterangan']) ?>">
+                        data-search="<?= strtolower($r['ref_trx'].' '.$r['nama_supplier']) ?>">
                         
                         <!-- No -->
                         <td class="px-5 py-3.5 text-center text-sm font-semibold text-slate-500 font-mono"><?= $no++ ?></td>
@@ -136,11 +135,6 @@ try {
                             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-<?= $statusColor ?>-50 text-<?= $statusColor ?>-700 border border-<?= $statusColor ?>-200 text-xs font-semibold">
                                 <i class="fa-solid fa-<?= $statusIcon ?>"></i> <?= sanitize($statusText) ?>
                             </span>
-                        </td>
-
-                        <!-- Keterangan -->
-                        <td class="px-5 py-3.5 text-xs text-slate-500 max-w-xs truncate" title="<?= sanitize($r['keterangan']) ?>">
-                            <?= sanitize($r['keterangan'] ?: '—') ?>
                         </td>
 
                         <!-- Aksi -->
