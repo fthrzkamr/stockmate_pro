@@ -163,9 +163,13 @@ foreach ($items as $i) {
                     <?php endforeach; ?>
                 </tbody>
                 <tfoot>
+                    <?php 
+                        $satuans = array_unique(array_filter(array_column($items, 'satuan')));
+                        $total_unit = (count($satuans) === 1) ? reset($satuans) : (count($items) === 1 ? ($first['satuan'] ?: 'Item') : 'Item');
+                    ?>
                     <tr class="bg-slate-50/80 border-t-2 border-slate-200 font-bold">
                         <td class="px-5 py-4 text-xs text-slate-500 uppercase tracking-wider">Total Akumulasi Qty</td>
-                        <td class="px-5 py-4 text-right font-mono text-base text-rose-600" colspan="1">-<?= number_format($total_qty) ?> Pcs</td>
+                        <td class="px-5 py-4 text-right font-mono text-base text-rose-600" colspan="1">-<?= number_format($total_qty) ?> <?= sanitize($total_unit) ?></td>
                     </tr>
                 </tfoot>
             </table>
