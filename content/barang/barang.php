@@ -84,7 +84,7 @@ try {
         LEFT JOIN supplier s ON b.id_supplier = s.id_supplier 
         LEFT JOIN tipe_barang t ON b.id_tipe = t.id_tipe
         WHERE $whereSql
-        ORDER BY b.nama_barang ASC
+        ORDER BY b.id_barang DESC
         LIMIT $limit OFFSET $offset
     ");
     $stmt->execute($params);
