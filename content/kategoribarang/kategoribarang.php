@@ -43,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $id = (int)($_POST['id_kategori'] ?? 0);
             if (!$id) throw new Exception('ID kategori tidak valid.');
 
-            // Delete types first or set id_kategori to null
             $conn->prepare("DELETE FROM tipe_barang WHERE id_kategori = ?")->execute([$id]);
             $conn->prepare("DELETE FROM kategori_barang WHERE id_kategori = ?")->execute([$id]);
 
@@ -102,29 +101,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Fetch Kategori & Tipe
-try {
-    $kategori_list = $conn->query("SELECT * FROM kategori_barang ORDER BY id_kategori ASC")->fetchAll(PDO::FETCH_ASSOC);
-    $tipe_list = $conn->query("SELECT * FROM tipe_barang ORDER BY id_tipe ASC")->fetchAll(PDO::FETCH_ASSOC);
+// Filter & Pagination
+$search = $_GET['search'] ?? '';
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$limit = isset($_GET['limit']) ? max(10, min(100, (int)$_GET['limit'])) : 25;
+$offset = ($page - 1) * $limit;
 
-    // Group types by id_kategori
-    $groupedTypes = [];
-    foreach ($tipe_list as $t) {
-        $groupedTypes[$t['id_kategori']][] = $t;
-    }
+$whereClauses = ["1=1"];
+$params = [];
+
+if ($search) {
+    $whereClauses[] = "(t.nama_tipe LIKE ? OR k.nama_kategori LIKE ? OR EXISTS (SELECT 1 FROM barang b2 WHERE b2.id_tipe = t.id_tipe AND b2.nama_barang LIKE ?))";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+}
+
+$whereSql = implode(" AND ", $whereClauses);
+
+// Count Total Data
+try {
+    $stCount = $conn->prepare("
+        SELECT COUNT(t.id_tipe) 
+        FROM tipe_barang t 
+        LEFT JOIN kategori_barang k ON t.id_kategori = k.id_kategori 
+        WHERE $whereSql
+    ");
+    $stCount->execute($params);
+    $totalData = (int)$stCount->fetchColumn();
 } catch (Exception $e) {
+    $totalData = 0;
+}
+
+// Fetch Master Kategori & Tipe with linked barang names
+try {
+    $sql = "
+        SELECT 
+            t.id_tipe,
+            t.nama_tipe,
+            k.id_kategori,
+            k.nama_kategori,
+            (SELECT GROUP_CONCAT(b.nama_barang ORDER BY b.id_barang DESC SEPARATOR '||') FROM barang b WHERE b.id_tipe = t.id_tipe) as items_str,
+            (SELECT COUNT(b.id_barang) FROM barang b WHERE b.id_tipe = t.id_tipe) as total_barang
+        FROM tipe_barang t
+        LEFT JOIN kategori_barang k ON t.id_kategori = k.id_kategori
+        WHERE $whereSql
+        ORDER BY k.id_kategori ASC, t.id_tipe ASC
+        LIMIT $limit OFFSET $offset
+    ";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    $listData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // List all categories for dropdowns
+    $kategori_list = $conn->query("SELECT * FROM kategori_barang ORDER BY id_kategori ASC")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $listData = [];
     $kategori_list = [];
-    $groupedTypes = [];
 }
 ?>
 
-<div class="fade-up max-w-6xl mx-auto space-y-6">
-
+<div class="fade-up space-y-5">
+    
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Master Kategori & Tipe Barang</h1>
-            <p class="text-slate-500 text-sm mt-1">Kelola data kategori utama dan tipe barang yang terhubung secara dinamis.</p>
+            <h1 class="text-xl font-bold text-slate-800">Master Kategori & Tipe Barang</h1>
+            <p class="text-slate-500 text-sm mt-0.5">Kelola data kategori utama, tipe barang, dan barang yang terhubung.</p>
         </div>
         <div class="flex items-center gap-2">
             <button type="button" onclick="bukaModalKategori()"
@@ -138,85 +181,132 @@ try {
         </div>
     </div>
 
-    <!-- Cards Layout per Category -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <?php if (empty($kategori_list)): ?>
-        <div class="col-span-3 bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
-            <i class="fa-solid fa-tags text-4xl mb-3 text-slate-300 block"></i>
-            <p class="font-semibold text-slate-600">Belum Ada Master Kategori</p>
-            <p class="text-xs text-slate-400 mt-1">Klik tombol "+ Tambah Kategori" untuk membuat kategori baru.</p>
-        </div>
-        <?php else: ?>
-        <?php foreach ($kategori_list as $kat): 
-            $katId = $kat['id_kategori'];
-            $types = $groupedTypes[$katId] ?? [];
-        ?>
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:border-slate-300 transition-all">
+    <!-- Filter Card (Style Retur Supplier) -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <form method="GET" class="flex flex-col sm:flex-row gap-3">
+            <input type="hidden" name="menu" value="kategoribarang">
+            <input type="hidden" name="limit" value="<?= $limit ?>">
             
-            <!-- Category Header -->
-            <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center font-bold text-sm">
-                        <?= htmlspecialchars($kat['nama_kategori']) ?>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-bold text-slate-800">Kategori: <?= htmlspecialchars($kat['nama_kategori']) ?></h3>
-                        <p class="text-[11px] text-slate-400 font-medium"><?= count($types) ?> Tipe Terhubung</p>
-                    </div>
-                </div>
-                
-                <!-- Action Buttons -->
-                <div class="flex items-center gap-1">
-                    <button type="button" onclick="editKategori(<?= $katId ?>, '<?= htmlspecialchars(addslashes($kat['nama_kategori'])) ?>')"
-                            class="w-7 h-7 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 flex items-center justify-center transition-colors" title="Edit Kategori">
-                        <i class="fa-solid fa-pen-to-square text-xs"></i>
-                    </button>
-                    <button type="button" onclick="hapusKategori(<?= $katId ?>, '<?= htmlspecialchars(addslashes($kat['nama_kategori'])) ?>')"
-                            class="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors" title="Hapus Kategori">
-                        <i class="fa-solid fa-trash text-xs"></i>
-                    </button>
+            <div class="flex-1">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Pencarian</label>
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Cari kategori, tipe, atau nama barang..."
+                           class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-all bg-slate-50">
                 </div>
             </div>
-
-            <!-- List of Types -->
-            <div class="p-4 flex-1 space-y-2">
-                <div class="flex justify-between items-center mb-2 px-1">
-                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Daftar Tipe Barang</span>
-                    <button type="button" onclick="bukaModalTipe(<?= $katId ?>)" class="text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline">
-                        + Tipe Baru
-                    </button>
-                </div>
-
-                <?php if (empty($types)): ?>
-                <div class="py-6 text-center text-xs text-slate-400 italic bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                    Belum ada tipe barang untuk kategori ini.
-                </div>
-                <?php else: ?>
-                <div class="space-y-2">
-                    <?php foreach ($types as $t): ?>
-                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 border border-slate-100 hover:bg-slate-100/60 transition-colors">
-                        <span class="text-xs font-semibold text-slate-700 flex items-center gap-2">
-                            <i class="fa-solid fa-angle-right text-[10px] text-sky-500"></i>
-                            <?= htmlspecialchars($t['nama_tipe']) ?>
-                        </span>
-                        <div class="flex items-center gap-1 opacity-80 hover:opacity-100">
-                            <button type="button" onclick="editTipe(<?= $t['id_tipe'] ?>, '<?= htmlspecialchars(addslashes($t['nama_tipe'])) ?>', <?= $t['id_kategori'] ?>)"
-                                    class="w-6 h-6 rounded text-slate-400 hover:text-amber-600 flex items-center justify-center text-[11px]">
-                                <i class="fa-solid fa-pen"></i>
-                            </button>
-                            <button type="button" onclick="hapusTipe(<?= $t['id_tipe'] ?>, '<?= htmlspecialchars(addslashes($t['nama_tipe'])) ?>')"
-                                    class="w-6 h-6 rounded text-slate-400 hover:text-rose-600 flex items-center justify-center text-[11px]">
-                                <i class="fa-solid fa-xmark text-xs"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
+            
+            <div class="flex items-end">
+                <button type="submit" class="w-full sm:w-auto px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-semibold transition-all">
+                    Filter
+                </button>
             </div>
+        </form>
+    </div>
+
+    <!-- Table Card (Style Retur Supplier & Master Barang) -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-4">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/20">
+            <h3 class="text-sm font-bold text-slate-700">Data Master Kategori</h3>
+            <?php echo generateShowEntries($limit, 'kategoribarang', urlencode($search)); ?>
         </div>
-        <?php endforeach; ?>
-        <?php endif; ?>
+        
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200">
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-12 text-center">No.</th>
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-36">Kategori</th>
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-56">Tipe Barang</th>
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Nama Barang Terkait</th>
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center w-28">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    <?php if (empty($listData)): ?>
+                    <tr>
+                        <td colspan="5" class="px-5 py-12 text-center text-slate-400 text-sm">
+                            <i class="fa-solid fa-folder-open text-3xl mb-2 block text-slate-200"></i>
+                            Tidak ada data kategori/tipe barang yang ditemukan.
+                        </td>
+                    </tr>
+                    <?php else: ?>
+                    <?php $no = $offset + 1; foreach ($listData as $row): 
+                        $items = !empty($row['items_str']) ? explode('||', $row['items_str']) : [];
+                    ?>
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        
+                        <!-- No. Urut -->
+                        <td class="px-5 py-4 text-center text-sm font-semibold text-slate-500 font-mono"><?= $no++ ?></td>
+
+                        <!-- Kategori -->
+                        <td class="px-5 py-4">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-100">
+                                    <?= htmlspecialchars($row['nama_kategori'] ?: '-') ?>
+                                </span>
+                                <div>
+                                    <p class="text-xs font-bold text-slate-800">Kategori <?= htmlspecialchars($row['nama_kategori'] ?: '-') ?></p>
+                                    <button type="button" onclick="editKategori(<?= $row['id_kategori'] ?>, '<?= htmlspecialchars(addslashes($row['nama_kategori'])) ?>')" class="text-[10px] text-indigo-600 hover:underline">
+                                        Edit Kategori
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Tipe Barang -->
+                        <td class="px-5 py-4">
+                            <p class="text-sm font-bold text-slate-800"><?= htmlspecialchars($row['nama_tipe']) ?></p>
+                            <span class="text-[10px] text-slate-400 font-medium">ID Tipe: #<?= $row['id_tipe'] ?></span>
+                        </td>
+
+                        <!-- Nama Barang Terkait -->
+                        <td class="px-5 py-4">
+                            <?php if (empty($items)): ?>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-400 border border-slate-200">
+                                <i class="fa-solid fa-circle-minus text-[10px]"></i> Belum ada barang terkait
+                            </span>
+                            <?php else: ?>
+                            <div class="space-y-1.5 max-w-xl">
+                                <div class="flex flex-wrap gap-1.5">
+                                    <?php foreach (array_slice($items, 0, 5) as $itemNama): ?>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">
+                                        <i class="fa-solid fa-box text-[10px] text-sky-400"></i> <?= htmlspecialchars($itemNama) ?>
+                                    </span>
+                                    <?php endforeach; ?>
+                                    <?php if (count($items) > 5): ?>
+                                    <span class="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                        +<?= count($items) - 5 ?> barang lainnya
+                                    </span>
+                                    <?php endif; ?>
+                                </div>
+                                <p class="text-[10px] text-slate-400 font-medium">Total: <b><?= count($items) ?></b> barang terdaftar menggunakan tipe ini.</p>
+                            </div>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="px-5 py-4 text-center">
+                            <div class="flex items-center justify-center gap-1.5">
+                                <button type="button" onclick="editTipe(<?= $row['id_tipe'] ?>, '<?= htmlspecialchars(addslashes($row['nama_tipe'])) ?>', <?= $row['id_kategori'] ?>)"
+                                        class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 flex items-center justify-center transition-colors border border-amber-100" title="Edit Tipe">
+                                    <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                </button>
+                                <button type="button" onclick="hapusTipe(<?= $row['id_tipe'] ?>, '<?= htmlspecialchars(addslashes($row['nama_tipe'])) ?>')"
+                                        class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-colors border border-rose-100" title="Hapus Tipe">
+                                    <i class="fa-solid fa-trash text-xs"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Bar (Style Retur Supplier) -->
+        <?php echo generatePagination($totalData, $limit, $sistem . '/kategoribarang', $page, 'kategoribarang', urlencode($search)); ?>
     </div>
 
 </div>
