@@ -126,8 +126,8 @@ if ($is_print) {
     <body>
         <div class="header">
             <div style="font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #1e293b;">PT PSY BERKAH INDONESIA</div>
-            <div style="font-size: 10px; color: #64748b; margin-top: 2px; line-height: 1.3;">Bintaro Jaya, Jl. Bintaro Utama 9 Jalan Elang Raya No.17, Pondok Pucung, Pondok Aren, South Tangerang City, Banten 15229</div>
-            <h1 style="margin-top: 8px; font-size: 15px;">Laporan Penerimaan Barang (Masuk)</h1>
+            <div style="font-size: 10px; color: #475569; margin-top: 2px; line-height: 1.3; border-bottom: 1px solid #94a3b8; padding-bottom: 6px; margin-bottom: 10px;">Bintaro Jaya, Jl. Bintaro Utama 9 Jalan Elang Raya No.17, Pondok Pucung, Pondok Aren, South Tangerang City, Banten 15229</div>
+            <h1 style="margin-top: 4px; font-size: 15px;">Laporan Penerimaan Barang (Masuk)</h1>
             <p>Rentang Periode: <?= date('d M Y', strtotime($tgl_awal)) ?> s/d <?= date('d M Y', strtotime($tgl_akhir)) ?></p>
         </div>
 
