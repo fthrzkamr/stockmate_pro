@@ -69,10 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($action === 'edit_tipe') {
             $id = (int)($_POST['id_tipe'] ?? 0);
             $nama_tipe = trim($_POST['nama_tipe'] ?? '');
+            $id_kategori = (int)($_POST['id_kategori'] ?? 0);
             if (!$id || !$nama_tipe) throw new Exception('Data tidak valid.');
 
-            $stmt = $conn->prepare("UPDATE tipe_barang SET nama_tipe = ? WHERE id_tipe = ?");
-            $stmt->execute([$nama_tipe, $id]);
+            if ($id_kategori > 0) {
+                $stmt = $conn->prepare("UPDATE tipe_barang SET nama_tipe = ?, id_kategori = ? WHERE id_tipe = ?");
+                $stmt->execute([$nama_tipe, $id_kategori, $id]);
+            } else {
+                $stmt = $conn->prepare("UPDATE tipe_barang SET nama_tipe = ? WHERE id_tipe = ?");
+                $stmt->execute([$nama_tipe, $id]);
+            }
 
             writeAuditLog('UPDATE', 'tipe_barang', $id, "Memperbarui tipe barang: $nama_tipe");
             echo json_encode(['status' => 'success', 'msg' => 'Tipe barang berhasil diperbarui!']);
@@ -194,7 +200,7 @@ try {
                             <?= htmlspecialchars($t['nama_tipe']) ?>
                         </span>
                         <div class="flex items-center gap-1 opacity-80 hover:opacity-100">
-                            <button type="button" onclick="editTipe(<?= $t['id_tipe'] ?>, '<?= htmlspecialchars(addslashes($t['nama_tipe'])) ?>')"
+                            <button type="button" onclick="editTipe(<?= $t['id_tipe'] ?>, '<?= htmlspecialchars(addslashes($t['nama_tipe'])) ?>', <?= $t['id_kategori'] ?>)"
                                     class="w-6 h-6 rounded text-slate-400 hover:text-amber-600 flex items-center justify-center text-[11px]">
                                 <i class="fa-solid fa-pen"></i>
                             </button>
@@ -382,7 +388,7 @@ function bukaModalTipe(idKategori = null) {
     setTimeout(() => { content.classList.remove('scale-95', 'opacity-0'); }, 10);
 }
 
-function editTipe(id, nama) {
+function editTipe(id, nama, idKategori = null) {
     document.getElementById('tipeTitle').textContent = 'Edit Tipe Barang';
     document.getElementById('tipeAction').value = 'edit_tipe';
     document.getElementById('tipeId').value = id;
@@ -390,8 +396,11 @@ function editTipe(id, nama) {
     
     const boxKat = document.getElementById('boxKatSelect');
     const selectKat = document.getElementById('tipeSelectKat');
-    boxKat.classList.add('hidden');
-    selectKat.required = false;
+    boxKat.classList.remove('hidden');
+    selectKat.required = true;
+    if (idKategori) {
+        selectKat.value = idKategori;
+    }
 
     const modal = document.getElementById('modalTipe');
     const content = document.getElementById('modalTipeContent');
