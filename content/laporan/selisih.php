@@ -103,8 +103,8 @@ if ($is_print) {
         <title>Laporan Selisih Stock Opname</title>
         <style>
             body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; font-size: 11px; margin: 20px; line-height: 1.4; }
-            .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-            .header h1 { margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .header { text-align: center; margin-bottom: 20px; padding-bottom: 5px; }
+            .header h1 { margin: 8px 0 0; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
             .header p { margin: 4px 0 0; font-size: 11px; color: #666; }
             .meta { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; }
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -129,7 +129,7 @@ if ($is_print) {
         <div class="header">
             <div style="font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #1e293b;">PT PSY BERKAH INDONESIA</div>
             <div style="font-size: 10px; color: #64748b; margin-top: 2px; line-height: 1.3;">Bintaro Jaya, Jl. Bintaro Utama 9 Jalan Elang Raya No.17, Pondok Pucung, Pondok Aren, South Tangerang City, Banten 15229</div>
-            <h1 style="margin-top: 8px; font-size: 15px; border-top: 1px solid #e2e8f0; padding-top: 8px;">Laporan Selisih Stock Opname</h1>
+            <h1 style="margin-top: 8px; font-size: 15px;">Laporan Selisih Stock Opname</h1>
             <p>Rentang Periode: <?= date('d M Y', strtotime($tgl_awal)) ?> s/d <?= date('d M Y', strtotime($tgl_akhir)) ?></p>
         </div>
 
