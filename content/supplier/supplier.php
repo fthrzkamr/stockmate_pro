@@ -6,11 +6,12 @@ if (!canDo('supplier', 'view')) {
 
 global $conn, $sistem;
 
-// Handle AJAX status toggle (Soft Delete / Deaktivasi)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_status') {
+// Handle AJAX Delete Supplier
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_supplier') {
+    ob_clean();
     header('Content-Type: application/json');
     if (!canDo('supplier', 'delete') && !canDo('supplier', 'edit')) {
-        echo json_encode(['status' => 'error', 'msg' => 'Anda tidak memiliki hak akses untuk memodifikasi supplier ini.']);
+        echo json_encode(['status' => 'error', 'msg' => 'Anda tidak memiliki hak akses untuk menghapus supplier ini.']);
         exit;
     }
     
@@ -21,20 +22,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
     
     try {
-        $stmt = $conn->prepare("SELECT nama_supplier, is_active FROM supplier WHERE id_supplier = ?");
+        $stmt = $conn->prepare("SELECT nama_supplier FROM supplier WHERE id_supplier = ?");
         $stmt->execute([$id_supplier]);
-        $supplier = $stmt->fetch();
+        $nama = $stmt->fetchColumn();
         
-        if ($supplier) {
-            $new_status = $supplier['is_active'] ? 0 : 1;
-            $conn->prepare("UPDATE supplier SET is_active = ? WHERE id_supplier = ?")->execute([$new_status, $id_supplier]);
-            
-            $status_label = $new_status ? 'Mengaktifkan kembali' : 'Menonaktifkan (Soft Delete)';
-            writeAuditLog($new_status ? 'UPDATE' : 'DELETE', 'supplier', $id_supplier, "$status_label supplier: {$supplier['nama_supplier']}");
+        if ($nama) {
+            $conn->prepare("DELETE FROM supplier WHERE id_supplier = ?")->execute([$id_supplier]);
+            writeAuditLog('DELETE', 'supplier', $id_supplier, "Menghapus supplier: $nama");
             
             echo json_encode([
                 'status' => 'success', 
-                'msg' => "Supplier <b>{$supplier['nama_supplier']}</b> berhasil " . ($new_status ? 'diaktifkan.' : 'dinonaktifkan (soft deleted).')
+                'msg' => "Supplier <b>$nama</b> berhasil dihapus dari sistem."
             ]);
         } else {
             echo json_encode(['status' => 'error', 'msg' => 'Supplier tidak ditemukan.']);
@@ -170,13 +168,10 @@ try {
                                 <?php endif; ?>
                                 
                                 <?php if (canDo('supplier', 'delete') || canDo('supplier', 'edit')): ?>
-                                <button onclick="toggleSupplier(<?= $s['id_supplier'] ?>, '<?= sanitize($s['nama_supplier']) ?>', <?= $s['is_active'] ?>)"
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center transition-colors border
-                                               <?= $s['is_active'] 
-                                                   ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' 
-                                                   : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100' ?>" 
-                                        title="<?= $s['is_active'] ? 'Nonaktifkan (Soft Delete)' : 'Aktifkan' ?>">
-                                    <i class="fa-solid <?= $s['is_active'] ? 'fa-eye-slash' : 'fa-eye' ?> text-xs"></i>
+                                <button onclick="hapusSupplier(<?= $s['id_supplier'] ?>, '<?= sanitize($s['nama_supplier']) ?>')"
+                                        class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-colors border border-rose-100" 
+                                        title="Hapus Supplier">
+                                    <i class="fa-solid fa-trash text-xs"></i>
                                 </button>
                                 <?php endif; ?>
                             </div>
@@ -202,35 +197,30 @@ document.getElementById('searchSupplier')?.addEventListener('input', function() 
     });
 });
 
-// Toggle Status (Soft Delete)
-function toggleSupplier(id, nama, active) {
-    const title = active ? 'Nonaktifkan Supplier?' : 'Aktifkan Supplier?';
-    const text = active 
-        ? `Supplier <b>${nama}</b> akan dinonaktifkan. Data lama tetap tersimpan tapi tidak bisa dipilih di transaksi baru.` 
-        : `Supplier <b>${nama}</b> akan diaktifkan kembali agar bisa dipilih dalam form transaksi.`;
-        
+// Hapus Supplier
+function hapusSupplier(id, nama) {
     Swal.fire({
-        title: title,
-        html: text,
+        title: 'Hapus Supplier?',
+        html: `Apakah Anda yakin ingin menghapus supplier <b>${nama}</b> secara permanen?`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: active ? '#ef4444' : '#10b981',
+        confirmButtonColor: '#ef4444',
         cancelButtonColor: '#94a3b8',
-        confirmButtonText: active ? 'Ya, Nonaktifkan!' : 'Ya, Aktifkan!',
+        confirmButtonText: 'Ya, Hapus!',
         cancelButtonText: 'Batal'
     }).then(result => {
         if (!result.isConfirmed) return;
         
         Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         const fd = new FormData();
-        fd.append('action', 'toggle_status');
+        fd.append('action', 'delete_supplier');
         fd.append('id_supplier', id);
         
         fetch('<?= $sistem ?>/supplier', { method: 'POST', body: fd })
             .then(r => r.json())
             .then(res => {
                 if (res.status === 'success') {
-                    Swal.fire({ icon: 'success', title: 'Berhasil!', text: res.msg, timer: 1500, showConfirmButton: false })
+                    Swal.fire({ icon: 'success', title: 'Berhasil!', html: res.msg, timer: 1500, showConfirmButton: false })
                         .then(() => location.reload());
                 } else {
                     Swal.fire({ icon: 'error', title: 'Gagal!', text: res.msg });
