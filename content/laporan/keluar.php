@@ -80,6 +80,7 @@ try {
                MAX(bk.tanggal) as tanggal, 
                MAX(bk.keterangan) as keterangan, 
                MAX(o.nama_outlet) as nama_outlet, 
+               MAX(o.alamat) as alamat_outlet,
                MAX(u.nama) as operator,
                COUNT(bk.id_barang) as total_item,
                SUM(bk.qty) as total_qty,
@@ -139,7 +140,9 @@ if ($is_print) {
     </head>
     <body>
         <div class="header">
-            <h1>Laporan Distribusi Barang (Keluar)</h1>
+            <div style="font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #1e293b;">PT PSY BERKAH INDONESIA</div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px;">StockMate Pro - System Management Inventory</div>
+            <h1 style="margin-top: 8px; font-size: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px;">Laporan Barang Keluar (Pengiriman Outlet)</h1>
             <p>Rentang Periode: <?= date('d M Y', strtotime($tgl_awal)) ?> s/d <?= date('d M Y', strtotime($tgl_akhir)) ?></p>
         </div>
 
@@ -193,8 +196,12 @@ if ($is_print) {
                     <tr>
                         <td class="text-center"><?= $no++ ?></td>
                         <td><?= date('d/m/Y', strtotime($r['tanggal'])) ?></td>
-                        <td class="mono"><?= htmlspecialchars($r['ref_trx'] ?: '—') ?></td>
-                        <td><?= htmlspecialchars($r['nama_outlet'] ?: 'Tanpa Outlet') ?></td>
+                        <td>
+                            <b><?= htmlspecialchars($r['nama_outlet'] ?: 'Tanpa Outlet') ?></b>
+                            <?php if (!empty($r['alamat_outlet'])): ?>
+                            <br><small style="color: #666; font-size: 10px;"><?= htmlspecialchars($r['alamat_outlet']) ?></small>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-center mono"><?= number_format($r['total_item']) ?> Jenis</td>
                         <td class="text-center mono" style="font-weight: bold; color: #c5221f;">-<?= number_format($r['total_qty']) ?></td>
                         <td><?= htmlspecialchars($r['operator'] ?: 'System') ?></td>
@@ -363,9 +370,12 @@ try {
                             <td class="px-5 py-3.5 font-mono text-xs font-semibold text-slate-600">
                                 <?= sanitize($row['ref_trx'] ?: '—') ?>
                             </td>
-                            <td class="px-5 py-3.5 font-bold text-slate-800">
-                                <?= sanitize($row['nama_outlet'] ?: 'Tanpa Outlet') ?>
-                            </td>
+                             <td class="px-5 py-3.5">
+                                 <p class="font-bold text-slate-800"><?= sanitize($row['nama_outlet'] ?: 'Tanpa Outlet') ?></p>
+                                 <?php if (!empty($row['alamat_outlet'])): ?>
+                                 <p class="text-[11px] text-slate-400 font-medium flex items-center gap-1 mt-0.5"><i class="fa-solid fa-location-dot text-rose-400 text-[10px]"></i> <?= sanitize($row['alamat_outlet']) ?></p>
+                                 <?php endif; ?>
+                             </td>
                             <td class="px-5 py-3.5 text-center text-slate-600 font-semibold">
                                 <?= number_format($row['total_item']) ?> Jenis
                             </td>

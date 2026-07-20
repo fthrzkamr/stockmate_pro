@@ -64,7 +64,7 @@ if (!$trx_code) exit;
 
 try {
     $st = $conn->prepare("
-        SELECT bk.*, b.nama_barang, b.barcode, b.satuan, o.nama_outlet, u.nama as operator
+        SELECT bk.*, b.nama_barang, b.barcode, b.satuan, o.nama_outlet, o.alamat as alamat_outlet, u.nama as operator
         FROM barang_keluar bk
         JOIN barang b ON bk.id_barang = b.id_barang
         LEFT JOIN outlet o ON bk.id_outlet = o.id_outlet
@@ -140,6 +140,9 @@ foreach ($items as $i) {
             <div>
                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tujuan / Outlet</p>
                 <p class="text-sm font-bold text-slate-800 leading-tight"><?= sanitize($first['nama_outlet'] ?? 'Tanpa Outlet') ?></p>
+                <?php if (!empty($first['alamat_outlet'])): ?>
+                <p class="text-xs text-slate-500 mt-1 flex items-center gap-1 font-medium"><i class="fa-solid fa-location-dot text-rose-500 text-[11px]"></i> <?= sanitize($first['alamat_outlet']) ?></p>
+                <?php endif; ?>
             </div>
         </div>
         <div class="bg-gradient-to-br from-slate-50 to-white border border-slate-150 rounded-2xl p-4 flex items-start gap-3 shadow-sm">

@@ -125,7 +125,9 @@ if ($is_print) {
     </head>
     <body>
         <div class="header">
-            <h1>Laporan Penerimaan Barang (Masuk)</h1>
+            <div style="font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #1e293b;">PT PSY BERKAH INDONESIA</div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px;">StockMate Pro - System Management Inventory</div>
+            <h1 style="margin-top: 8px; font-size: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px;">Laporan Penerimaan Barang (Masuk)</h1>
             <p>Rentang Periode: <?= date('d M Y', strtotime($tgl_awal)) ?> s/d <?= date('d M Y', strtotime($tgl_akhir)) ?></p>
         </div>
 

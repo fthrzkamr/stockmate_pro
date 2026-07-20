@@ -151,7 +151,9 @@ if ($is_print) {
     </head>
     <body>
         <div class="header">
-            <h1>Laporan Stok Barang</h1>
+            <div style="font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #1e293b;">PT PSY BERKAH INDONESIA</div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px;">StockMate Pro - System Management Inventory</div>
+            <h1 style="margin-top: 8px; font-size: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px;">Laporan Stok Barang</h1>
             <p>Lokasi Pemantauan: <?php
                 if ($lokasi_filter === 'all') echo 'Semua Lokasi (Gudang & Cabang)';
                 elseif ($lokasi_filter === 'gudang') echo 'Gudang Pusat (HO)';
@@ -176,15 +178,17 @@ if ($is_print) {
             <thead>
                 <tr>
                     <th class="text-center" style="width: 5%">No</th>
-                    <th style="width: 15%">Barcode</th>
+                    <th style="width: 12%">Barcode</th>
                     <th>Nama Barang</th>
+                    <th style="width: 12%">Kategori</th>
+                    <th style="width: 15%">Tipe</th>
                     <?php if ($lokasi_filter === 'all'): ?>
                     <th class="text-center" style="width: 12%">Stok Gudang</th>
                     <th class="text-center" style="width: 12%">Stok Outlet</th>
                     <?php else: ?>
                     <th class="text-center" style="width: 15%">Stok Saat Ini</th>
                     <?php endif; ?>
-                    <th class="text-center" style="width: 10%">Min Stok</th>
+                    <th class="text-center" style="width: 8%">Min Stok</th>
                     <th class="text-center" style="width: 10%">Status</th>
                 </tr>
             </thead>
@@ -324,6 +328,8 @@ if (!$my_outlet_id) {
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center w-12">No</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Barcode</th>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Nama Barang</th>
+                        <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Kategori</th>
+                        <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider">Tipe</th>
                         
                         <?php if ($lokasi_filter === 'all'): ?>
                         <th class="px-5 py-3.5 font-semibold text-slate-600 text-xs uppercase tracking-wider text-center">Stok Gudang</th>
@@ -358,6 +364,12 @@ if (!$my_outlet_id) {
                             </td>
                             <td class="px-5 py-3.5">
                                 <p class="font-bold text-slate-700"><?= sanitize($row['nama_barang']) ?></p>
+                            </td>
+                            <td class="px-5 py-3.5 text-slate-600 font-medium text-xs">
+                                <?= sanitize($row['kategori'] ?: '—') ?>
+                            </td>
+                            <td class="px-5 py-3.5 text-slate-600 font-medium text-xs">
+                                <?= sanitize($row['nama_tipe'] ?: '—') ?>
                             </td>
                             
                             <?php if ($lokasi_filter === 'all'): ?>
