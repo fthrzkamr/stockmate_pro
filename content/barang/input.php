@@ -323,10 +323,8 @@ function setActiveRow(id) {
     }
 }
 
-// Inisialisasi awal 3 baris
+// Inisialisasi awal 1 baris
 document.addEventListener('DOMContentLoaded', () => {
-    addRow();
-    addRow();
     addRow();
     setActiveRow('row_1');
 });
